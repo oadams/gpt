@@ -1,8 +1,11 @@
+import math 
+from typing import Dict, List, Tuple, Optional
+
 from jaxtyping import Float, Integer
 import torch
+from torch import Tensor
 import torch.nn
 import torch.random
-from typing import Dict, List, Tuple, Union, Optional
 
 with open('crime_and_punishment.txt') as f:
     text = f.read()
@@ -29,23 +32,23 @@ test = text_ids[k:]
 # How did Karpathy's approach ensure the whole data was used in a given epoch?
 # I seem to recall him randomly choosing an offset. Well let's just go with that for now
 # and update it later when we want to do training
-def create_batch(batch_size: int, block_size: int, split: str) -> Tuple[Float[torch.Tensor, 'B T C'], Float[torch.Tensor, 'B T C']]:
+def create_batch(batch_size: int, block_size: int, split: str) -> Tuple[Float[Tensor, 'B T C'], Float[Tensor, 'B T C']]:
     if split == 'train':
         text_ids = train
     elif split == 'test':
         text_ids = test
     else:
         raise ValueError()
-    rand_starts: Float[torch.Tensor, '...'] = torch.randint(len(text_ids) - block_size, (batch_size,))
+    rand_starts: Float[Tensor, '...'] = torch.randint(len(text_ids) - block_size, (batch_size,))
     x = torch.tensor([text_ids[rand_start:rand_start+block_size] for rand_start in rand_starts.tolist()])
     y = torch.tensor([text_ids[rand_start+1:rand_start+block_size+1] for rand_start in rand_starts.tolist()])
     return x, y
 
 x, y = create_batch(4, 8, 'test')
 
-def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, block_size: int) -> Dict[str, Float[torch.Tensor, '...']]:
+def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, block_size: int) -> Dict[str, Float[Tensor, '...']]:
     model.eval()
-    result: Dict[str, Float[torch.Tensor, '...']] = {}
+    result: Dict[str, Float[Tensor, '...']] = {}
     for split in ['train', 'test']:
         losses = torch.zeros(eval_iters)
         for iter in range(eval_iters):
@@ -55,6 +58,31 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, bloc
         result[split] = losses.mean()
     return result
 
+# Now let's define an attention block. What does it need?
+# Params
+# - Input size
+# - Output size
+# Inputs:
+# - BTC embeddings
+# Ouptuts:
+# - BTC embeddings  
+
+class Attention(torch.nn.Module):
+    def __init__(self, input_dim: int, output_dim: int) -> None:
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        # What about weight initialization for these?
+        self.Wk = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
+        self.Wq = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
+        self.Wv = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
+
+    def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
+        K: Float[Tensor, 'B T H'] = self.Wk(x)
+        Q: Float[Tensor, 'B T H'] = self.Wq(x)
+        V: Float[Tensor, 'B T H'] = self.Wv(x)
+        return torch.nn.functional.relu(Q @ K.transpose(1, 2) / math.sqrt(K.shape[-1])) @ V
+
 
 class GPT(torch.nn.Module):
     def __init__(self, vocab: List[str], hdim: int):
@@ -63,10 +91,12 @@ class GPT(torch.nn.Module):
         self.embedding = torch.nn.Embedding(len(vocab), hdim)
         self.final_proj = torch.nn.Linear(hdim, len(vocab))
         self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.attention = Attention(hdim, hdim)
         # Now we need to make a loss.
 
-    def forward(self, x: Integer[torch.Tensor, 'B T'], y: Optional[Integer[torch.Tensor, 'B T']] = None) -> Tuple[Float[torch.Tensor, 'B T C'], Optional[Float[torch.Tensor, '...']]]:
+    def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
         x = self.embedding(x)
+        x = self.attention(x)
         logits = self.final_proj(x)
 
         if y is None:
@@ -78,7 +108,7 @@ class GPT(torch.nn.Module):
             loss = self.loss_fn(logits, y)
             return logits, loss
 
-    def generate(self, context: Integer[torch.Tensor, 'B T'], max_output_length: int) -> Integer[torch.Tensor, "B T"]:
+    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int) -> Integer[Tensor, 'B T']:
         for _ in range(max_output_length):
             # Convert context into input IDs. This requires knowing context size.
             logits, _ = self(context)
@@ -96,8 +126,8 @@ gpt(x, None)
 context = torch.tensor(c2i('\n')).view(1, 1)
 print(context)
 print(context.shape)
-''.join(i2c(x) for x in gpt.generate(context, 100)[0].tolist())
-estimate_loss(gpt, 500, 4, 8)
+print(estimate_loss(gpt, 500, 4, 8))
+print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=1e-3)
 
 for step in range(10000):
@@ -106,6 +136,5 @@ for step in range(10000):
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
-estimate_loss(gpt, 500, 4, 8)
-
-''.join(i2c(x) for x in gpt.generate(context, 100)[0].tolist())
+print(estimate_loss(gpt, 500, 4, 8))
+print(''.join(i2c(x) for x in gpt.generate(context, 100)[0].tolist()))
