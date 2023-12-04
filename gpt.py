@@ -80,6 +80,18 @@ class Attention(torch.nn.Module):
         wei = wei.softmax(dim=-1)
         return torch.nn.functional.relu(wei) @ V
 
+
+class MultiHeadAttention(torch.nn.Module):
+    def __init__(self, input_dim: int, output_dim: int, num_blocks) -> None:
+        super().__init__()
+        assert output_dim % num_blocks == 0
+        self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_blocks)) for _ in range(num_blocks))
+
+    def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
+        head_outs = [head(x) for head in self.heads]
+        return torch.cat(head_outs, dim=-1)
+
+
 class GPT(torch.nn.Module):
     def __init__(self, vocab: List[str], hdim: int, context_length: int):
         super().__init__()
@@ -88,7 +100,7 @@ class GPT(torch.nn.Module):
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = torch.nn.Linear(hdim, len(vocab))
         self.loss_fn = torch.nn.CrossEntropyLoss()
-        self.attention = Attention(hdim, hdim)
+        self.attention = MultiHeadAttention(hdim, hdim, 2)
         # Now we need to make a loss.
 
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
