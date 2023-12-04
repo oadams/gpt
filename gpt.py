@@ -92,21 +92,32 @@ class MultiHeadAttention(torch.nn.Module):
         return torch.cat(head_outs, dim=-1)
 
 
+class TransformerLayer(torch.nn.Module):
+    def __init__(self, input_dim: int, output_dim: int, num_blocks: int) -> None:
+        super().__init__()
+        self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks)
+        self.ff = torch.nn.Linear(output_dim, output_dim)
+
+    def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
+        return self.ff(self.mh_attention(x))
+
+
 class GPT(torch.nn.Module):
-    def __init__(self, vocab: List[str], hdim: int, context_length: int):
+    def __init__(self, vocab: List[str], hdim: int, context_length: int, num_layers: int):
         super().__init__()
         self.vocab = vocab
         self.embedding = torch.nn.Embedding(len(vocab), hdim)
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = torch.nn.Linear(hdim, len(vocab))
         self.loss_fn = torch.nn.CrossEntropyLoss()
-        self.attention = MultiHeadAttention(hdim, hdim, 2)
+        self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, 2) for _ in range(num_layers)])
         # Now we need to make a loss.
 
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
         T = x.shape[-1]
         x = self.embedding(x) + self.pos_embedding(torch.arange((T)))
-        x = self.attention(x)
+        for layer in self.layers:
+            x = layer(x)
         logits = self.final_proj(x)
 
         if y is None:
@@ -131,7 +142,7 @@ class GPT(torch.nn.Module):
         return context
 
 context_length = 8
-gpt = GPT(vocab, 32, context_length)
+gpt = GPT(vocab, 32, context_length, 2)
 gpt(x, None)
 context = torch.tensor(c2i('\n')).view(1, 1)
 print(context)
