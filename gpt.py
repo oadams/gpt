@@ -78,7 +78,7 @@ class Attention(torch.nn.Module):
         tril = torch.tril(torch.ones(T, T))
         wei = wei.masked_fill(tril == 0, float('-inf'))
         wei = wei.softmax(dim=-1)
-        return torch.nn.functional.relu(wei) @ V
+        return wei @ V
 
 
 class MultiHeadAttention(torch.nn.Module):
@@ -96,10 +96,11 @@ class TransformerLayer(torch.nn.Module):
     def __init__(self, input_dim: int, output_dim: int, num_blocks: int) -> None:
         super().__init__()
         self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks)
-        self.ff = torch.nn.Linear(output_dim, output_dim)
+        self.ff1 = torch.nn.Linear(output_dim, output_dim)
+        self.ff2 = torch.nn.Linear(output_dim, output_dim)
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
-        return self.ff(self.mh_attention(x))
+        return self.ff2(torch.nn.functional.relu(self.ff1(self.mh_attention(x))))
 
 
 class GPT(torch.nn.Module):
