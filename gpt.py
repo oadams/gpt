@@ -81,8 +81,12 @@ class Attention(torch.nn.Module):
         K: Float[Tensor, 'B T H'] = self.Wk(x)
         Q: Float[Tensor, 'B T H'] = self.Wq(x)
         V: Float[Tensor, 'B T H'] = self.Wv(x)
-        return torch.nn.functional.relu(Q @ K.transpose(1, 2) / math.sqrt(K.shape[-1])) @ V
-
+        wei = Q @ K.transpose(1, 2) / math.sqrt(K.shape[-1])
+        T = x.shape[1]
+        tril = torch.tril(torch.ones(T, T))
+        wei = wei.masked_fill(tril == 0, float('-inf'))
+        wei = wei.softmax(dim=-1)
+        return torch.nn.functional.relu(wei) @ V
 
 class GPT(torch.nn.Module):
     def __init__(self, vocab: List[str], hdim: int):
@@ -111,7 +115,7 @@ class GPT(torch.nn.Module):
     def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int) -> Integer[Tensor, 'B T']:
         for _ in range(max_output_length):
             # Convert context into input IDs. This requires knowing context size.
-            logits, _ = self(context)
+            logits, _ = self(context) # B T C
             logits = logits[:, -1, :]
             # Now find the word closest to this logit. Question: How is that done? Answer: it actually is sampling just from a multinomial over the probs.  
             probs = torch.nn.functional.softmax(logits, dim=-1)
