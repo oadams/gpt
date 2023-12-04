@@ -9,7 +9,6 @@ import torch.random
 import tqdm
 
 device = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
-#device = torch.device('cpu')
 
 with open('crime_and_punishment.txt') as f:
     text = f.read()
@@ -31,32 +30,38 @@ k = int(0.9*len(text_ids))
 train = text_ids[:k]
 test = text_ids[k:]
 
-# Let's construct our training examples.
-# We want to take our text, some block size, and generate a random sample.
-# How did Karpathy's approach ensure the whole data was used in a given epoch?
-# I seem to recall him randomly choosing an offset. Well let's just go with that for now
-# and update it later when we want to do training
-def create_batch(batch_size: int, block_size: int, split: str) -> Tuple[Float[Tensor, 'B T C'], Float[Tensor, 'B T C']]:
+
+def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Float[Tensor, 'B T C'], Float[Tensor, 'B T C']]:
+    """ Create a random batch of examples. This consists of two tensors of the
+    same shape, x and y. y is just x offset by one timestep so that each
+    position in y corresponds to the same position in x but one timestep
+    further. For now there are only two splits, 'train' and 'test'.
+    """
+
     if split == 'train':
         text_ids = train
     elif split == 'test':
         text_ids = test
     else:
         raise ValueError()
-    rand_starts: Float[Tensor, '...'] = torch.randint(len(text_ids) - block_size, (batch_size,))
-    x = torch.tensor([text_ids[rand_start:rand_start+block_size] for rand_start in rand_starts.tolist()]).to(device)
-    y = torch.tensor([text_ids[rand_start+1:rand_start+block_size+1] for rand_start in rand_starts.tolist()]).to(device)
+    rand_starts: Float[Tensor, '...'] = torch.randint(len(text_ids) - context_length, (batch_size,))
+    x = torch.tensor([text_ids[rand_start:rand_start+context_length] for rand_start in rand_starts.tolist()]).to(device)
+    y = torch.tensor([text_ids[rand_start+1:rand_start+context_length+1] for rand_start in rand_starts.tolist()]).to(device)
     return x, y
 
-x, y = create_batch(4, 8, 'test')
 
-def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, block_size: int) -> Dict[str, Float[Tensor, '...']]:
+def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, context_length: int) -> Dict[str, Float[Tensor, '...']]:
+    """ Estimates the loss of the model by randomly sampling `eval_iters`
+    batches and averaging the loss. It's not an exhaustive evaluation of the
+    test set.
+    """
+
     model.eval()
     result: Dict[str, Float[Tensor, '...']] = {}
     for split in ['train', 'test']:
         losses = torch.zeros(eval_iters)
         for iter in range(eval_iters):
-            x, y = create_batch(batch_size, block_size, split)
+            x, y = create_batch(batch_size, context_length, split)
             _, loss = model(x, y)
             losses[iter] = loss.item()
         result[split] = losses.mean()
@@ -64,11 +69,12 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, bloc
 
 
 class Attention(torch.nn.Module):
+    """ Single head attention module. """
+
     def __init__(self, input_dim: int, output_dim: int, dropout: float, context_length: int) -> None:
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
-        # What about weight initialization for these?
         self.Wk = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.Wq = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.Wv = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
@@ -164,6 +170,8 @@ hidden_size = 256
 num_layers = 4
 dropout = 0.2
 gpt = GPT(vocab, hidden_size, context_length, num_layers, dropout).to(device)
+total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
+print(f'{total_params=}')
 gpt(x, None)
 context = torch.tensor(c2i('\n')).view(1, 1).to(device)
 print(context)
