@@ -100,11 +100,12 @@ class TransformerLayer(torch.nn.Module):
         self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks)
         self.ff = torch.nn.Linear(output_dim, 4*output_dim)
         self.proj = torch.nn.Linear(4*output_dim, output_dim)
-        self.layernorm = torch.nn.LayerNorm(output_dim)
+        self.layernorm1 = torch.nn.LayerNorm(output_dim)
+        self.layernorm2 = torch.nn.LayerNorm(output_dim)
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
-        x = x + self.mh_attention(x)
-        x = x + self.proj(torch.nn.functional.relu(self.ff(x)))
+        x = x + self.mh_attention(self.layernorm1(x))
+        x = x + self.proj(torch.nn.functional.relu(self.ff(self.layernorm2(x))))
         return x
 
 
