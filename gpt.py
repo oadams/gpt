@@ -58,14 +58,6 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, bloc
         result[split] = losses.mean()
     return result
 
-# Now let's define an attention block. What does it need?
-# Params
-# - Input size
-# - Output size
-# Inputs:
-# - BTC embeddings
-# Ouptuts:
-# - BTC embeddings  
 
 class Attention(torch.nn.Module):
     def __init__(self, input_dim: int, output_dim: int) -> None:
@@ -89,17 +81,19 @@ class Attention(torch.nn.Module):
         return torch.nn.functional.relu(wei) @ V
 
 class GPT(torch.nn.Module):
-    def __init__(self, vocab: List[str], hdim: int):
+    def __init__(self, vocab: List[str], hdim: int, context_length: int):
         super().__init__()
         self.vocab = vocab
         self.embedding = torch.nn.Embedding(len(vocab), hdim)
+        self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = torch.nn.Linear(hdim, len(vocab))
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.attention = Attention(hdim, hdim)
         # Now we need to make a loss.
 
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
-        x = self.embedding(x)
+        T = x.shape[-1]
+        x = self.embedding(x) + self.pos_embedding(torch.arange((T)))
         x = self.attention(x)
         logits = self.final_proj(x)
 
@@ -112,10 +106,10 @@ class GPT(torch.nn.Module):
             loss = self.loss_fn(logits, y)
             return logits, loss
 
-    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int) -> Integer[Tensor, 'B T']:
+    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int) -> Integer[Tensor, 'B T']:
         for _ in range(max_output_length):
             # Convert context into input IDs. This requires knowing context size.
-            logits, _ = self(context) # B T C
+            logits, _ = self(context[:, -context_length:]) # B T C
             logits = logits[:, -1, :]
             # Now find the word closest to this logit. Question: How is that done? Answer: it actually is sampling just from a multinomial over the probs.  
             probs = torch.nn.functional.softmax(logits, dim=-1)
@@ -124,21 +118,21 @@ class GPT(torch.nn.Module):
             context = torch.cat((context, idx), dim=1)
         return context
 
-
-gpt = GPT(vocab, 32)
+context_length = 8
+gpt = GPT(vocab, 32, context_length)
 gpt(x, None)
 context = torch.tensor(c2i('\n')).view(1, 1)
 print(context)
 print(context.shape)
-print(estimate_loss(gpt, 500, 4, 8))
-print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100)[0].tolist()))
+print(estimate_loss(gpt, 500, 4, context_length))
+print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=1e-3)
 
 for step in range(10000):
     gpt.zero_grad()
-    batch = create_batch(4, 8, 'train')
+    batch = create_batch(4, context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
 print(estimate_loss(gpt, 500, 4, 8))
-print(''.join(i2c(x) for x in gpt.generate(context, 100)[0].tolist()))
+print(''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
