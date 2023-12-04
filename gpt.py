@@ -6,7 +6,10 @@ import torch
 from torch import Tensor
 import torch.nn
 import torch.random
+from torch.utils.tensorboard import SummaryWriter
 import tqdm
+
+writer = SummaryWriter()
 
 device = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
 
@@ -132,7 +135,6 @@ class GPT(torch.nn.Module):
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, 2, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = torch.nn.LayerNorm(hdim)
-        # Now we need to make a loss.
 
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
         T = x.shape[-1]
@@ -164,7 +166,7 @@ class GPT(torch.nn.Module):
         return context
 
 batch_size = 64
-context_length = 64
+context_length = 128 
 lr = 3e-4
 hidden_size = 256
 num_layers = 4
@@ -172,7 +174,8 @@ dropout = 0.2
 gpt = GPT(vocab, hidden_size, context_length, num_layers, dropout).to(device)
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print(f'{total_params=}')
-gpt(x, None)
+print((p, p.numel()) for p in gpt.parameters() if p.requires_grad)
+
 context = torch.tensor(c2i('\n')).view(1, 1).to(device)
 print(context)
 print(context.shape)
@@ -180,11 +183,15 @@ print(estimate_loss(gpt, 500, batch_size, context_length))
 print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=lr)
 
-for step in tqdm.tqdm(range(10000)):
+for step in tqdm.tqdm(range(20000)):
     gpt.zero_grad()
     batch = create_batch(batch_size, context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
-print(estimate_loss(gpt, 500, batch_size, 8))
-print(''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
+    if step % 500 == 0:
+        result = estimate_loss(gpt, 500, batch_size, context_length)
+        writer.add_scalar('Loss/train', result['train'], step)
+        writer.add_scalar('Loss/test', result['test'], step)
+print(estimate_loss(gpt, 500, batch_size, context_length))
+print(''.join(i2c(x) for x in gpt.generate(context, 1000, context_length)[0].tolist()))
