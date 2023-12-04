@@ -8,8 +8,8 @@ import torch.nn
 import torch.random
 import tqdm
 
-#device = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
-device = torch.device('cpu')
+device = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
+#device = torch.device('cpu')
 
 with open('crime_and_punishment.txt') as f:
     text = f.read()
@@ -64,7 +64,7 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, bloc
 
 
 class Attention(torch.nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, dropout: float) -> None:
+    def __init__(self, input_dim: int, output_dim: int, dropout: float, context_length: int) -> None:
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -73,6 +73,7 @@ class Attention(torch.nn.Module):
         self.Wq = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.Wv = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.dropout = torch.nn.Dropout(dropout)
+        self.register_buffer('tril', torch.tril(torch.ones(context_length, context_length)))
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         K: Float[Tensor, 'B T H'] = self.Wk(x)
@@ -80,18 +81,17 @@ class Attention(torch.nn.Module):
         V: Float[Tensor, 'B T H'] = self.Wv(x)
         wei = Q @ K.transpose(1, 2) / math.sqrt(K.shape[-1])
         T = x.shape[1]
-        tril = torch.tril(torch.ones(T, T)).to(device)
-        wei = wei.masked_fill(tril == 0, float('-inf'))
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = wei.softmax(dim=-1)
         wei = self.dropout(wei)
         return wei @ V
 
 
 class MultiHeadAttention(torch.nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_blocks: int, dropout: float) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_blocks: int, dropout: float, context_length: int) -> None:
         super().__init__()
         assert output_dim % num_blocks == 0
-        self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_blocks), dropout) for _ in range(num_blocks))
+        self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_blocks), dropout, context_length) for _ in range(num_blocks))
         self.proj = torch.nn.Linear(output_dim, output_dim)
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
@@ -100,9 +100,9 @@ class MultiHeadAttention(torch.nn.Module):
 
 
 class TransformerLayer(torch.nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_blocks: int, dropout: float) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_blocks: int, dropout: float, context_length: int) -> None:
         super().__init__()
-        self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks, dropout)
+        self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks, dropout, context_length)
         self.ff = torch.nn.Linear(output_dim, 4*output_dim)
         self.proj = torch.nn.Linear(4*output_dim, output_dim)
         self.layernorm1 = torch.nn.LayerNorm(output_dim)
@@ -124,7 +124,7 @@ class GPT(torch.nn.Module):
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = torch.nn.Linear(hdim, len(vocab))
         self.loss_fn = torch.nn.CrossEntropyLoss()
-        self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, 2, dropout) for _ in range(num_layers)])
+        self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, 2, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = torch.nn.LayerNorm(hdim)
         # Now we need to make a loss.
 
@@ -157,22 +157,26 @@ class GPT(torch.nn.Module):
             context = torch.cat((context, idx), dim=1)
         return context
 
-context_length = 8
+batch_size = 64
+context_length = 64
+lr = 3e-4
+hidden_size = 256
+num_layers = 4
 dropout = 0.2
-gpt = GPT(vocab, 32, context_length, 4, dropout).to(device)
+gpt = GPT(vocab, hidden_size, context_length, num_layers, dropout).to(device)
 gpt(x, None)
 context = torch.tensor(c2i('\n')).view(1, 1).to(device)
 print(context)
 print(context.shape)
-print(estimate_loss(gpt, 500, 4, context_length))
+print(estimate_loss(gpt, 500, batch_size, context_length))
 print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
-optim = torch.optim.AdamW(gpt.parameters(), lr=1e-3)
+optim = torch.optim.AdamW(gpt.parameters(), lr=lr)
 
 for step in tqdm.tqdm(range(10000)):
     gpt.zero_grad()
-    batch = create_batch(4, context_length, 'train')
+    batch = create_batch(batch_size, context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
-print(estimate_loss(gpt, 500, 4, 8))
+print(estimate_loss(gpt, 500, batch_size, 8))
 print(''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
