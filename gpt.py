@@ -6,6 +6,7 @@ import torch
 from torch import Tensor
 import torch.nn
 import torch.random
+import tqdm
 
 with open('crime_and_punishment.txt') as f:
     text = f.read()
@@ -86,21 +87,25 @@ class MultiHeadAttention(torch.nn.Module):
         super().__init__()
         assert output_dim % num_blocks == 0
         self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_blocks)) for _ in range(num_blocks))
+        self.proj = torch.nn.Linear(output_dim, output_dim)
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         head_outs = [head(x) for head in self.heads]
-        return torch.cat(head_outs, dim=-1)
+        return self.proj(torch.cat(head_outs, dim=-1))
 
 
 class TransformerLayer(torch.nn.Module):
     def __init__(self, input_dim: int, output_dim: int, num_blocks: int) -> None:
         super().__init__()
         self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks)
-        self.ff1 = torch.nn.Linear(output_dim, output_dim)
-        self.ff2 = torch.nn.Linear(output_dim, output_dim)
+        self.ff = torch.nn.Linear(output_dim, 4*output_dim)
+        self.proj = torch.nn.Linear(4*output_dim, output_dim)
+        self.layernorm = torch.nn.LayerNorm(output_dim)
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
-        return self.ff2(torch.nn.functional.relu(self.ff1(self.mh_attention(x))))
+        x = x + self.mh_attention(x)
+        x = x + self.proj(torch.nn.functional.relu(self.ff(x)))
+        return x
 
 
 class GPT(torch.nn.Module):
@@ -143,7 +148,7 @@ class GPT(torch.nn.Module):
         return context
 
 context_length = 8
-gpt = GPT(vocab, 32, context_length, 2)
+gpt = GPT(vocab, 32, context_length, 4)
 gpt(x, None)
 context = torch.tensor(c2i('\n')).view(1, 1)
 print(context)
@@ -152,7 +157,7 @@ print(estimate_loss(gpt, 500, 4, context_length))
 print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=1e-3)
 
-for step in range(10000):
+for step in tqdm.tqdm(range(10000)):
     gpt.zero_grad()
     batch = create_batch(4, context_length, 'train')
     logits, loss = gpt(*batch)
