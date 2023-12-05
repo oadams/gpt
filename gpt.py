@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple, Optional
 
 from jaxtyping import Float, Integer
 import platform
+import tiktoken
 import torch
 from torch import Tensor
 import torch.nn
@@ -26,7 +27,7 @@ def get_device():
         # Check for CUDA availability on non-Mac systems
         if torch.cuda.is_available():
             print("Using CUDA")
-            return torch.device("cuda")
+            return torch.device("cuda:1")
         else:
             print("CUDA not available, using CPU")
             return torch.device("cpu")
@@ -37,15 +38,9 @@ with open('crime_and_punishment.txt') as f:
     text = f.read()
 print(len(text))
 
-vocab = sorted(set(text))
+enc = tiktoken.get_encoding('gpt2')
 
-def c2i(c: str) -> int:
-    return vocab.index(c)
-
-def i2c(i: int) -> str:
-    return vocab[i]
-
-text_ids = [c2i(c) for c in text]
+text_ids = enc.encode(text)
 
 torch.random.manual_seed(1337)
 
@@ -146,12 +141,11 @@ class TransformerLayer(torch.nn.Module):
 
 
 class GPT(torch.nn.Module):
-    def __init__(self, vocab: List[str], hdim: int, context_length: int, num_layers: int, dropout: float):
+    def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float):
         super().__init__()
-        self.vocab = vocab
-        self.embedding = torch.nn.Embedding(len(vocab), hdim)
+        self.embedding = torch.nn.Embedding(n_vocab, hdim)
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
-        self.final_proj = torch.nn.Linear(hdim, len(vocab))
+        self.final_proj = torch.nn.Linear(hdim, n_vocab)
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, 2, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = torch.nn.LayerNorm(hdim)
@@ -185,22 +179,23 @@ class GPT(torch.nn.Module):
             context = torch.cat((context, idx), dim=1)
         return context
 
-batch_size = 64
+
+batch_size = 1
 context_length = 512 
 lr = 3e-4
 hidden_size = 256
 num_layers = 4
 dropout = 0.2
-gpt = GPT(vocab, hidden_size, context_length, num_layers, dropout).to(device)
+gpt = GPT(enc.n_vocab, hidden_size, context_length, num_layers, dropout).to(device)
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print(f'{total_params=}')
 print([p.numel() for p in gpt.parameters() if p.requires_grad])
 
-context = torch.tensor(c2i('\n')).view(1, 1).to(device)
+context = torch.tensor(enc.encode('\n')).view(1, 1).to(device)
 print(context)
 print(context.shape)
 print(estimate_loss(gpt, 500, batch_size, context_length))
-print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
+print('No training: ', ''.join(enc.decode(gpt.generate(context, 100, context_length)[0].tolist())))
 optim = torch.optim.AdamW(gpt.parameters(), lr=lr)
 
 for step in tqdm.tqdm(range(10000)):
@@ -214,4 +209,4 @@ for step in tqdm.tqdm(range(10000)):
         writer.add_scalar('Loss/train', result['train'], step)
         writer.add_scalar('Loss/test', result['test'], step)
 print(estimate_loss(gpt, 500, batch_size, context_length))
-print(''.join(i2c(x) for x in gpt.generate(context, 1000, context_length)[0].tolist()))
+print(''.join(enc.decode(gpt.generate(context, 1000, context_length)[0].tolist())))
