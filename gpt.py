@@ -1,3 +1,4 @@
+import argparse
 import math 
 from typing import Dict, List, Tuple, Optional
 
@@ -8,10 +9,9 @@ import torch
 from torch import Tensor
 import torch.nn
 import torch.random
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
 
-writer = SummaryWriter()
 
 def get_device():
     # Check if the machine is a Mac
@@ -32,20 +32,65 @@ def get_device():
             print("CUDA not available, using CPU")
             return torch.device("cpu")
 
-device = get_device()
 
-with open('stoic.txt') as f:
+parser = argparse.ArgumentParser()
+parser.add_argument('--corpus', default='crime_and_punishment.txt', help='Plain UTF-8 text file as training data. Gets split 90/10')
+parser.add_argument('--device', default=get_device())
+parser.add_argument('--tokenizer', default='char', choices=['char', 'bpe'])
+parser.add_argument('--random_seed', default=0)
+parser.add_argument('--train_fraction', default=0.9)
+parser.add_argument('--batch_size', default=32)
+parser.add_argument('--context_length', default=128)
+parser.add_argument('--lr', default=3e-4, help='Learning rate')
+parser.add_argument('--hidden_size', default=256)
+parser.add_argument('--num_layers', default=6)
+parser.add_argument('--num_heads', default=6)
+parser.add_argument('--dropout', default=0.2)
+parser.add_argument('--n_estimate_steps', default=100, help='The number of steps to take in loss estimation (it is probabilistic)')
+
+args = parser.parse_args()
+
+writer = SummaryWriter()
+
+torch.random.manual_seed(args.random_seed)
+
+if isinstance(args.device, 'str'):
+    args.device = torch.device(args.device)
+
+with open(args.corpus, encoding='utf-8') as f:
     text = f.read()
-print(len(text))
+print(f'Corpus length in Unicode codepoints: {len(text)}')
 
-enc = tiktoken.get_encoding('gpt2')
+class CharTokenizer:
+    def __init__(self, text):
+        self.vocab = sorted(set(text))
+        self.n_vocab = len(self.vocab)
+
+    def c2i(self, c: str) -> int:
+        return self.vocab.index(c)
+
+    def i2c(self, i: int) -> str:
+        return self.vocab[i]
+
+    def encode(self, text: str) -> List[int]:
+        return [self.c2i(c) for c in text]
+
+    def decode(self, ids: List[int]) -> str:
+        return "".join(self.i2c(i) for i in ids)
+
+if args.tokenizer == 'bpe':
+    # For now we just use GPT-2's BPE tokenizer. This has a ~50k vocabulary, so it's pretty big. Unless your model is 
+    enc = tiktoken.get_encoding('gpt2')
+elif args.tokenizer == 'char':
+    enc = CharTokenizer(text)
+else:
+    raise ValueError("`--tokenizer` argument must be either 'char' or 'bpe'.")
 
 text_ids = enc.encode(text)
+print(f'Length of corpus in tokens: {len(text_ids)}')
 
-torch.random.manual_seed(1337)
-
-k = int(0.9*len(text_ids))
-train = text_ids[:k]
+k = int(args.train_fraction*len(text_ids))
+train = text_ids
 test = text_ids[k:]
 
 
@@ -63,8 +108,8 @@ def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Floa
     else:
         raise ValueError()
     rand_starts: Float[Tensor, '...'] = torch.randint(len(text_ids) - context_length, (batch_size,))
-    x = torch.tensor([text_ids[rand_start:rand_start+context_length] for rand_start in rand_starts.tolist()]).to(device)
-    y = torch.tensor([text_ids[rand_start+1:rand_start+context_length+1] for rand_start in rand_starts.tolist()]).to(device)
+    x = torch.tensor([text_ids[rand_start:rand_start+context_length] for rand_start in rand_starts.tolist()]).to(args.device)
+    y = torch.tensor([text_ids[rand_start+1:rand_start+context_length+1] for rand_start in rand_starts.tolist()]).to(args.device)
     return x, y
 
 
@@ -152,7 +197,7 @@ class GPT(torch.nn.Module):
 
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
         T = x.shape[-1]
-        x = self.embedding(x) + self.pos_embedding(torch.arange((T), device=device))
+        x = self.embedding(x) + self.pos_embedding(torch.arange((T), device=args.device))
         for layer in self.layers:
             x = layer(x)
         x = self.layernorm(x)
@@ -179,37 +224,29 @@ class GPT(torch.nn.Module):
             context = torch.cat((context, idx), dim=1)
         return context
 
-
-batch_size = 40
-context_length = 256
-lr = 3e-4
-hidden_size = 384
-num_layers = 6
-num_heads = 6
-dropout = 0.2
-n_estimate_steps = 100
-gpt = GPT(enc.n_vocab, hidden_size, context_length, num_layers, dropout, num_heads).to(device)
+gpt = GPT(enc.n_vocab, args.hidden_size, args.context_length, args.num_layers, args.dropout, args.num_heads).to(args.device)
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
-print(f'{total_params=}')
+print('Model: ', gpt)
+print(f'Total parameters in model: {total_params=}')
 print([p.numel() for p in gpt.parameters() if p.requires_grad])
 
-context = torch.tensor(enc.encode('\n')).view(1, 1).to(device)
+context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
 print(context)
 print(context.shape)
-print(estimate_loss(gpt, n_estimate_steps, batch_size, context_length))
-print('No training: ', ''.join(enc.decode(gpt.generate(context, 100, context_length)[0].tolist())))
-optim = torch.optim.AdamW(gpt.parameters(), lr=lr)
+print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
+print('No training: ', ''.join(enc.decode(gpt.generate(context, 100, args.context_length)[0].tolist())))
+optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
 for step in tqdm.tqdm(range(30000)):
     gpt.zero_grad()
-    batch = create_batch(batch_size, context_length, 'train')
+    batch = create_batch(args.batch_size, args.context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
     if step % 1000 == 0:
         torch.save(gpt.state_dict(), f'model_{step}.pth')
-        result = estimate_loss(gpt, n_estimate_steps, batch_size, context_length)
+        result = estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
         writer.add_scalar('Loss/train', result['train'], step)
         writer.add_scalar('Loss/test', result['test'], step)
-print(estimate_loss(gpt, n_estimate_steps, batch_size, context_length))
-print(''.join(enc.decode(gpt.generate(context, 1000, context_length)[0].tolist())))
+print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
+print(enc.decode(gpt.generate(context, 1000, args.context_length)[0].tolist()))
