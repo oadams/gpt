@@ -2,6 +2,7 @@ import math
 from typing import Dict, List, Tuple, Optional
 
 from jaxtyping import Float, Integer
+import platform
 import torch
 from torch import Tensor
 import torch.nn
@@ -11,7 +12,26 @@ import tqdm
 
 writer = SummaryWriter()
 
-device = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
+def get_device():
+    # Check if the machine is a Mac
+    if platform.system() == 'Darwin':
+        # Check for MPS availability (requires PyTorch 1.12.0 or later)
+        if torch.backends.mps.is_available():
+            print("Using MPS (Metal Performance Shaders) on Mac")
+            return torch.device("mps")
+        else:
+            print("MPS not available, using CPU on Mac")
+            return torch.device("cpu")
+    else:
+        # Check for CUDA availability on non-Mac systems
+        if torch.cuda.is_available():
+            print("Using CUDA")
+            return torch.device("cuda")
+        else:
+            print("CUDA not available, using CPU")
+            return torch.device("cpu")
+
+device = get_device()
 
 with open('crime_and_punishment.txt') as f:
     text = f.read()
@@ -166,7 +186,7 @@ class GPT(torch.nn.Module):
         return context
 
 batch_size = 64
-context_length = 128 
+context_length = 512 
 lr = 3e-4
 hidden_size = 256
 num_layers = 4
@@ -174,7 +194,7 @@ dropout = 0.2
 gpt = GPT(vocab, hidden_size, context_length, num_layers, dropout).to(device)
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print(f'{total_params=}')
-print((p, p.numel()) for p in gpt.parameters() if p.requires_grad)
+print([p.numel() for p in gpt.parameters() if p.requires_grad])
 
 context = torch.tensor(c2i('\n')).view(1, 1).to(device)
 print(context)
@@ -183,14 +203,14 @@ print(estimate_loss(gpt, 500, batch_size, context_length))
 print('No training: ', ''.join(i2c(x) for x in gpt.generate(context, 100, context_length)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=lr)
 
-for step in tqdm.tqdm(range(20000)):
+for step in tqdm.tqdm(range(10000)):
     gpt.zero_grad()
     batch = create_batch(batch_size, context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
-    if step % 500 == 0:
-        result = estimate_loss(gpt, 500, batch_size, context_length)
+    if step % 1000 == 0:
+        result = estimate_loss(gpt, 100, batch_size, context_length)
         writer.add_scalar('Loss/train', result['train'], step)
         writer.add_scalar('Loss/test', result['test'], step)
 print(estimate_loss(gpt, 500, batch_size, context_length))
