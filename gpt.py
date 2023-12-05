@@ -27,14 +27,14 @@ def get_device():
         # Check for CUDA availability on non-Mac systems
         if torch.cuda.is_available():
             print("Using CUDA")
-            return torch.device("cuda:1")
+            return torch.device("cuda")
         else:
             print("CUDA not available, using CPU")
             return torch.device("cpu")
 
 device = get_device()
 
-with open('crime_and_punishment.txt') as f:
+with open('stoic.txt') as f:
     text = f.read()
 print(len(text))
 
@@ -141,13 +141,13 @@ class TransformerLayer(torch.nn.Module):
 
 
 class GPT(torch.nn.Module):
-    def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float):
+    def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float, num_heads: int):
         super().__init__()
         self.embedding = torch.nn.Embedding(n_vocab, hdim)
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = torch.nn.Linear(hdim, n_vocab)
         self.loss_fn = torch.nn.CrossEntropyLoss()
-        self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, 2, dropout, context_length) for _ in range(num_layers)])
+        self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = torch.nn.LayerNorm(hdim)
 
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
@@ -180,13 +180,15 @@ class GPT(torch.nn.Module):
         return context
 
 
-batch_size = 1
-context_length = 512 
+batch_size = 40
+context_length = 256
 lr = 3e-4
-hidden_size = 256
-num_layers = 4
+hidden_size = 384
+num_layers = 6
+num_heads = 6
 dropout = 0.2
-gpt = GPT(enc.n_vocab, hidden_size, context_length, num_layers, dropout).to(device)
+n_estimate_steps = 100
+gpt = GPT(enc.n_vocab, hidden_size, context_length, num_layers, dropout, num_heads).to(device)
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print(f'{total_params=}')
 print([p.numel() for p in gpt.parameters() if p.requires_grad])
@@ -194,19 +196,20 @@ print([p.numel() for p in gpt.parameters() if p.requires_grad])
 context = torch.tensor(enc.encode('\n')).view(1, 1).to(device)
 print(context)
 print(context.shape)
-print(estimate_loss(gpt, 500, batch_size, context_length))
+print(estimate_loss(gpt, n_estimate_steps, batch_size, context_length))
 print('No training: ', ''.join(enc.decode(gpt.generate(context, 100, context_length)[0].tolist())))
 optim = torch.optim.AdamW(gpt.parameters(), lr=lr)
 
-for step in tqdm.tqdm(range(10000)):
+for step in tqdm.tqdm(range(30000)):
     gpt.zero_grad()
     batch = create_batch(batch_size, context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
     if step % 1000 == 0:
-        result = estimate_loss(gpt, 100, batch_size, context_length)
+        torch.save(gpt.state_dict(), f'model_{step}.pth')
+        result = estimate_loss(gpt, n_estimate_steps, batch_size, context_length)
         writer.add_scalar('Loss/train', result['train'], step)
         writer.add_scalar('Loss/test', result['test'], step)
-print(estimate_loss(gpt, 500, batch_size, context_length))
+print(estimate_loss(gpt, n_estimate_steps, batch_size, context_length))
 print(''.join(enc.decode(gpt.generate(context, 1000, context_length)[0].tolist())))
