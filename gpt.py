@@ -44,9 +44,12 @@ parser.add_argument('--context_length', default=128)
 parser.add_argument('--lr', default=3e-4, help='Learning rate')
 parser.add_argument('--hidden_size', default=256)
 parser.add_argument('--num_layers', default=6)
-parser.add_argument('--num_heads', default=6)
+parser.add_argument('--num_heads', default=4)
 parser.add_argument('--dropout', default=0.2)
 parser.add_argument('--n_estimate_steps', default=100, help='The number of steps to take in loss estimation (it is probabilistic)')
+parser.add_argument('--n_gen_tokens', default=100, help='The number of tokens to generate during inference.')
+parser.add_argument('--train_steps', default=10000)
+parser.add_argument('--save_eval_every_n_steps', default=1000)
 
 args = parser.parse_args()
 
@@ -54,7 +57,7 @@ writer = SummaryWriter()
 
 torch.random.manual_seed(args.random_seed)
 
-if isinstance(args.device, 'str'):
+if isinstance(args.device, str):
     args.device = torch.device(args.device)
 
 with open(args.corpus, encoding='utf-8') as f:
@@ -157,10 +160,10 @@ class Attention(torch.nn.Module):
 
 
 class MultiHeadAttention(torch.nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_blocks: int, dropout: float, context_length: int) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float, context_length: int) -> None:
         super().__init__()
-        assert output_dim % num_blocks == 0
-        self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_blocks), dropout, context_length) for _ in range(num_blocks))
+        assert output_dim % num_heads == 0
+        self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_heads), dropout, context_length) for _ in range(num_heads))
         self.proj = torch.nn.Linear(output_dim, output_dim)
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
@@ -169,9 +172,9 @@ class MultiHeadAttention(torch.nn.Module):
 
 
 class TransformerLayer(torch.nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_blocks: int, dropout: float, context_length: int) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float, context_length: int) -> None:
         super().__init__()
-        self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_blocks, dropout, context_length)
+        self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_heads, dropout, context_length)
         self.ff = torch.nn.Linear(output_dim, 4*output_dim)
         self.proj = torch.nn.Linear(4*output_dim, output_dim)
         self.layernorm1 = torch.nn.LayerNorm(output_dim)
@@ -227,7 +230,7 @@ class GPT(torch.nn.Module):
 gpt = GPT(enc.n_vocab, args.hidden_size, args.context_length, args.num_layers, args.dropout, args.num_heads).to(args.device)
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print('Model: ', gpt)
-print(f'Total parameters in model: {total_params=}')
+print(f'Total parameters in model: {total_params}')
 print([p.numel() for p in gpt.parameters() if p.requires_grad])
 
 context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
@@ -237,16 +240,16 @@ print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_le
 print('No training: ', ''.join(enc.decode(gpt.generate(context, 100, args.context_length)[0].tolist())))
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
-for step in tqdm.tqdm(range(30000)):
+for step in tqdm.tqdm(range(args.train_steps)):
     gpt.zero_grad()
     batch = create_batch(args.batch_size, args.context_length, 'train')
     logits, loss = gpt(*batch)
     loss.backward()
     optim.step()
-    if step % 1000 == 0:
+    if step % args.save_eval_every_n_steps == 0:
         torch.save(gpt.state_dict(), f'model_{step}.pth')
         result = estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
         writer.add_scalar('Loss/train', result['train'], step)
         writer.add_scalar('Loss/test', result['test'], step)
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-print(enc.decode(gpt.generate(context, 1000, args.context_length)[0].tolist()))
+print(enc.decode(gpt.generate(context, args.n_gen_tokens, args.context_length)[0].tolist()))
