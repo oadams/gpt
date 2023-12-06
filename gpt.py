@@ -47,9 +47,12 @@ parser.add_argument('--num_layers', default=6)
 parser.add_argument('--num_heads', default=4)
 parser.add_argument('--dropout', default=0.2)
 parser.add_argument('--n_estimate_steps', default=100, help='The number of steps to take in loss estimation (it is probabilistic)')
-parser.add_argument('--n_gen_tokens', default=100, help='The number of tokens to generate during inference.')
+parser.add_argument('--n_gen_tokens', type=int, default=1000, help='The number of tokens to generate during inference.')
 parser.add_argument('--train_steps', default=10000)
 parser.add_argument('--save_eval_every_n_steps', default=1000)
+parser.add_argument('--model_path', default='model_1000.pth')
+parser.add_argument('--generate_only', default=True, action='store_true')
+parser.add_argument('--payg', default=True, help='Print as you go')
 
 args = parser.parse_args()
 
@@ -215,7 +218,7 @@ class GPT(torch.nn.Module):
             loss = self.loss_fn(logits, y)
             return logits, loss
 
-    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int) -> Integer[Tensor, 'B T']:
+    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False) -> Integer[Tensor, 'B T']:
         for _ in range(max_output_length):
             # Convert context into input IDs. This requires knowing context size.
             logits, _ = self(context[:, -context_length:]) # B T C
@@ -225,28 +228,34 @@ class GPT(torch.nn.Module):
             idx = torch.multinomial(probs, 1)
             # Then feed those words as context in. Once you get to length `context_size` start doing a sliding window.
             context = torch.cat((context, idx), dim=1)
+            if payg:
+                print(enc.decode([idx]), flush=True, end='')
         return context
 
 gpt = GPT(enc.n_vocab, args.hidden_size, args.context_length, args.num_layers, args.dropout, args.num_heads).to(args.device)
+if args.model_path is not None:
+    gpt.load_state_dict(torch.load(args.model_path))
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
 
 context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-print('No training: ', enc.decode(gpt.generate(context, 100, args.context_length)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
-for step in tqdm.tqdm(range(args.train_steps)):
-    gpt.zero_grad()
-    batch = create_batch(args.batch_size, args.context_length, 'train')
-    logits, loss = gpt(*batch)
-    loss.backward()
-    optim.step()
-    if step % args.save_eval_every_n_steps == 0:
-        torch.save(gpt.state_dict(), f'model_{step}.pth')
-        result = estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
-        writer.add_scalar('Loss/train', result['train'], step)
-        writer.add_scalar('Loss/test', result['test'], step)
-print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-print(enc.decode(gpt.generate(context, args.n_gen_tokens, args.context_length)[0].tolist()))
+if not args.generate_only:
+    gpt.train()
+    for step in tqdm.tqdm(range(args.train_steps)):
+        gpt.zero_grad()
+        batch = create_batch(args.batch_size, args.context_length, 'train')
+        logits, loss = gpt(*batch)
+        loss.backward()
+        optim.step()
+        if step % args.save_eval_every_n_steps == 0:
+            torch.save(gpt.state_dict(), f'model_{step}.pth')
+            result = estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
+            writer.add_scalar('Loss/train', result['train'], step)
+            writer.add_scalar('Loss/test', result['test'], step)
+
+    print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
+gpt.generate(context, args.n_gen_tokens, args.context_length, args.payg)
