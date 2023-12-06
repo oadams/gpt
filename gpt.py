@@ -53,6 +53,8 @@ parser.add_argument('--save_eval_every_n_steps', default=1000)
 parser.add_argument('--model_path', default='model_1000.pth')
 parser.add_argument('--generate_only', default=True, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
+parser.add_argument('--decode_greedy', default=False, action='store_true')
+parser.add_argument('--decode_topk', default=5, type=int)
 
 args = parser.parse_args()
 
@@ -218,14 +220,21 @@ class GPT(torch.nn.Module):
             loss = self.loss_fn(logits, y)
             return logits, loss
 
-    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False) -> Integer[Tensor, 'B T']:
+    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False, greedy=False, topk=None) -> Integer[Tensor, 'B T']:
         for _ in range(max_output_length):
             # Convert context into input IDs. This requires knowing context size.
             logits, _ = self(context[:, -context_length:]) # B T C
             logits = logits[:, -1, :]
             # Now find the word closest to this logit. Question: How is that done? Answer: it actually is sampling just from a multinomial over the probs.  
             probs = torch.nn.functional.softmax(logits, dim=-1)
-            idx = torch.multinomial(probs, 1)
+            if greedy:
+                idx = torch.argmax(probs, dim=1)[:, None]
+            elif topk:
+                top = torch.topk(probs, topk)
+                idx = torch.multinomial(top.values / top.values.sum(-1, keepdim=True), num_samples=1)
+                idx = top.indices.gather(dim=-1, index=idx)
+            else:
+                idx = torch.multinomial(probs, 1)
             # Then feed those words as context in. Once you get to length `context_size` start doing a sliding window.
             context = torch.cat((context, idx), dim=1)
             if payg:
@@ -239,7 +248,6 @@ total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
 
-context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
@@ -258,4 +266,5 @@ if not args.generate_only:
             writer.add_scalar('Loss/test', result['test'], step)
 
     print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-gpt.generate(context, args.n_gen_tokens, args.context_length, args.payg)
+context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
+gpt.generate(context, args.n_gen_tokens, args.context_length, args.payg, args.decode_greedy, args.decode_topk)
