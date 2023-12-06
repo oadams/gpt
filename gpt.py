@@ -68,6 +68,7 @@ parser.add_argument('--generate_only', default=True, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
 parser.add_argument('--decode_greedy', default=False, action='store_true')
 parser.add_argument('--decode_topk', default=None, type=int)
+parser.add_argument('--prompt', default='\n', type=str, help='A prompt for the model')
 
 args = parser.parse_args()
 
@@ -334,5 +335,5 @@ if not args.generate_only:
             writer.add_scalar('Loss/test', result['test'], step)
 
     print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-context = torch.tensor([enc.encode('\n')]).to(args.device)
+context = torch.tensor([enc.encode(args.prompt)]).to(args.device)
 gpt.generate(context, args.n_gen_tokens, args.context_length, args.payg, args.decode_greedy, args.decode_topk)
