@@ -277,6 +277,7 @@ class GPT(torch.nn.Module):
             loss = self.loss_fn(logits, y)
             return logits.view(B, T, C), loss
 
+    @torch.no_grad()
     @jaxtyped(typechecker=typechecker)
     def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False, greedy=False, topk=None) -> Integer[Tensor, 'B max_output_length']:
         T = context.shape[-1]
