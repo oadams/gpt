@@ -184,7 +184,7 @@ class TransformerLayer(torch.nn.Module):
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         x = x + self.mh_dropout(self.mh_attention(self.layernorm1(x)))
-        x = x + self.ff_dropout(self.proj(torch.nn.functional.relu(self.ff(self.layernorm2(x)))))
+        x = x + self.ff_dropout(self.proj(torch.nn.functional.gelu(self.ff(self.layernorm2(x)))))
         return x
 
 
@@ -231,13 +231,10 @@ gpt = GPT(enc.n_vocab, args.hidden_size, args.context_length, args.num_layers, a
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
-print([p.numel() for p in gpt.parameters() if p.requires_grad])
 
 context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
-print(context)
-print(context.shape)
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-print('No training: ', ''.join(enc.decode(gpt.generate(context, 100, args.context_length)[0].tolist())))
+print('No training: ', enc.decode(gpt.generate(context, 100, args.context_length)[0].tolist()))
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
 for step in tqdm.tqdm(range(args.train_steps)):
