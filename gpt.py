@@ -24,6 +24,9 @@ import tqdm
 
 
 def get_device():
+    """ Make use of the best hardware we have available. Leverage Apple Silicon
+    GPUs with Metal Performance Shaders (MPS) on Macs, and CUDA on other
+    systems.  """
     # Check if the machine is a Mac
     if platform.system() == 'Darwin':
         # Check for MPS availability (requires PyTorch 1.12.0 or later)
@@ -80,6 +83,9 @@ with open(args.corpus, encoding='utf-8') as f:
 print(f'Corpus length in Unicode codepoints: {len(text)}')
 
 class CharTokenizer:
+    """ A simple character-level tokenizer. Uses a similar interface to the tiktoken BPE encoders
+    so that they can be used interchangeably.
+    """
     def __init__(self, text: str) -> None:
         self.vocab = sorted(set(text))
         self.n_vocab = len(self.vocab)
@@ -98,6 +104,8 @@ class CharTokenizer:
 
 if args.tokenizer == 'bpe':
     # For now we just use GPT-2's BPE tokenizer. This has a ~50k vocabulary, so it's pretty big. Unless your model is 
+    # quite big, you'll want to use a smaller vocabulary otherwise the embedding and final projection matrices will
+    # be the bulk of the model's parameters.
     enc = tiktoken.get_encoding('gpt2')
 elif args.tokenizer == 'char':
     enc = CharTokenizer(text)
@@ -125,8 +133,8 @@ def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Inte
     elif split == 'test':
         text_ids = test
     else:
-        raise ValueError()
-    rand_starts: Float[Tensor, '...'] = torch.randint(len(text_ids) - context_length, (batch_size,))
+        raise ValueError('Split must be either "train" or "test"')
+    rand_starts: Float[Tensor, 'B'] = torch.randint(len(text_ids) - context_length, (batch_size,))
     x = torch.tensor([text_ids[rand_start:rand_start+context_length] for rand_start in rand_starts.tolist()]).to(args.device)
     y = torch.tensor([text_ids[rand_start+1:rand_start+context_length+1] for rand_start in rand_starts.tolist()]).to(args.device)
     return x, y
@@ -140,7 +148,7 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, cont
     """
 
     model.eval()
-    result: Dict[str, Float[Tensor, '...']] = {}
+    result = {}
     for split in ['train', 'test']:
         losses = torch.zeros(eval_iters)
         for iter in range(eval_iters):
@@ -158,10 +166,16 @@ class Attention(torch.nn.Module):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
+        # Why do we disable biases for these linear layers?
+        # One Answer: Our Q,K,V are just linear projections of the input, so we
+        # don't need an extra bias.
         self.Wk = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.Wq = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.Wv = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
         self.dropout = torch.nn.Dropout(dropout)
+        # register_buffer just stores this tensor in the model not as a parameter, so the optimizer
+        # won't do anything with them.
+        # tril is a triangular lower matrix and it's what we use to mask out the future tokens.
         self.register_buffer('tril', torch.tril(torch.ones(context_length, context_length)))
 
     @jaxtyped(typechecker=typechecker)
@@ -169,8 +183,12 @@ class Attention(torch.nn.Module):
         K: Float[Tensor, 'B T H'] = self.Wk(x)
         Q: Float[Tensor, 'B T H'] = self.Wq(x)
         V: Float[Tensor, 'B T H'] = self.Wv(x)
+        # For large dimensions H, the Q-K dot products can get very large, which means when we go
+        # to compute the softmax we get small gradients. Dividing by sqrt(H) helps mitigate this.
         wei = Q @ K.transpose(1, 2) / math.sqrt(K.shape[-1])
         T = x.shape[1]
+        # The magic to mask out future tokens. We set the future tokens to -inf so that when we
+        # do a softmax they get a probability of 0.
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = wei.softmax(dim=-1)
         wei = self.dropout(wei)
@@ -178,6 +196,14 @@ class Attention(torch.nn.Module):
 
 
 class MultiHeadAttention(torch.nn.Module):
+    """ Multihead attention is just a bunch of single head attentions concatenated together before a final projection.
+
+    We enforce output dim to be divisible by number of heads and then for our
+    final projection we use a square matrix. I don't think the transformer
+    necessarily requires this. You could have as many heads of whatever shape
+    you wwant and then concat and just project them to whatever hidden dimension
+    you want, but we're just avoiding having one extra parameter.
+    """
     def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float, context_length: int) -> None:
         super().__init__()
         assert output_dim % num_heads == 0
@@ -191,9 +217,21 @@ class MultiHeadAttention(torch.nn.Module):
 
 
 class TransformerLayer(torch.nn.Module):
+    """ A transformer 'block' or 'layer'.
+    
+    We use the pre-normalization variant of the transformer, which is popular.
+    That is, we apply layer norm to the inputs before each of the attention and
+    feed-forward layers.
+
+    Note that we use one single dropout parameter in various places in this codebase.
+    Since dropout is applied separately in different places you could have
+    separate parameters but we've chosen to have just one to keep the
+    hyperparameter space smaller.
+    """
     def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float, context_length: int) -> None:
         super().__init__()
         self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_heads, dropout, context_length)
+        # In the original paper they said d_model is 512 and d_ff is 2048. This is why we use a 4x ratio here.
         self.ff = torch.nn.Linear(output_dim, 4*output_dim)
         self.proj = torch.nn.Linear(4*output_dim, output_dim)
         self.layernorm1 = torch.nn.LayerNorm(output_dim)
@@ -203,6 +241,7 @@ class TransformerLayer(torch.nn.Module):
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
+        # x = x + y is a residiual connection.
         x = x + self.mh_dropout(self.mh_attention(self.layernorm1(x)))
         x = x + self.ff_dropout(self.proj(torch.nn.functional.gelu(self.ff(self.layernorm2(x)))))
         return x
@@ -212,6 +251,7 @@ class GPT(torch.nn.Module):
     def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float, num_heads: int) -> None:
         super().__init__()
         self.embedding = torch.nn.Embedding(n_vocab, hdim)
+        # These are learned absolute positional embeddings. Many other options abound.
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = torch.nn.Linear(hdim, n_vocab)
         self.loss_fn = torch.nn.CrossEntropyLoss()
@@ -240,18 +280,24 @@ class GPT(torch.nn.Module):
     def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False, greedy=False, topk=None) -> Integer[Tensor, 'B max_output_length']:
         T = context.shape[-1]
         for _ in range(max_output_length-T):
-            # Convert context into input IDs. This requires knowing context size.
+            # Convert context into input IDs. This requires knowing context length the model can handle.
             logits, _ = self(context[:, -context_length:]) # B T C
+            # Grab the final token. This is where we'll get the probabilities for the next token from.
             logits = logits[:, -1, :]
-            # Now find the word closest to this logit. Question: How is that done? Answer: it actually is sampling just from a multinomial over the probs.  
+            # Now find the token closest to this logit.
             probs = torch.nn.functional.softmax(logits, dim=-1)
             if greedy:
+                # Take the most likely token at each time step.
                 idx = torch.argmax(probs, dim=1)[:, None]
             elif topk:
+                # Take the top k tokens at each time step. We're basically just saying we never want to sample low probability tokens.
                 top = torch.topk(probs, topk)
+                # Renormalize probabilities and sample from them
                 idx = torch.multinomial(top.values / top.values.sum(-1, keepdim=True), num_samples=1)
+                # Convert indexes in top-k space into indexes in the full token vocab space.
                 idx = top.indices.gather(dim=-1, index=idx)
             else:
+                # Just do plain sampling from all possible tokens.
                 idx = torch.multinomial(probs, 1)
             # Then feed those words as context in. Once you get to length `context_size` start doing a sliding window.
             context = torch.cat((context, idx), dim=1)
