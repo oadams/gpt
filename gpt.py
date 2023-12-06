@@ -1,8 +1,18 @@
+"""
+A basic implementation of a decoder-only transformer.
+
+Uses jaxtyping to annotate the shapes of tensors. The convention here is:
+    - B = batch dimension
+    - T = 'time' dimension. Corresponds to the length of the sequence.
+    - C = 'channel' dimension. Corresponds to the size of the embedding, basically how many tokens are in the vocabulary.
+    - H = hidden dimension. Corresponds to the size of the hidden state of the transformer.
+"""
 import argparse
 import math 
 from typing import Dict, List, Tuple, Optional
 
-from jaxtyping import Float, Integer
+from beartype import beartype as typechecker
+from jaxtyping import Float, Integer, jaxtyped
 import platform
 import tiktoken
 import torch
@@ -47,14 +57,14 @@ parser.add_argument('--num_layers', default=6)
 parser.add_argument('--num_heads', default=4)
 parser.add_argument('--dropout', default=0.2)
 parser.add_argument('--n_estimate_steps', default=100, help='The number of steps to take in loss estimation (it is probabilistic)')
-parser.add_argument('--n_gen_tokens', type=int, default=1000, help='The number of tokens to generate during inference.')
+parser.add_argument('--n_gen_tokens', type=int, default=100, help='The number of tokens to generate during inference.')
 parser.add_argument('--train_steps', default=10000)
 parser.add_argument('--save_eval_every_n_steps', default=1000)
 parser.add_argument('--model_path', default='model_1000.pth')
 parser.add_argument('--generate_only', default=True, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
 parser.add_argument('--decode_greedy', default=False, action='store_true')
-parser.add_argument('--decode_topk', default=5, type=int)
+parser.add_argument('--decode_topk', default=None, type=int)
 
 args = parser.parse_args()
 
@@ -70,7 +80,7 @@ with open(args.corpus, encoding='utf-8') as f:
 print(f'Corpus length in Unicode codepoints: {len(text)}')
 
 class CharTokenizer:
-    def __init__(self, text):
+    def __init__(self, text: str) -> None:
         self.vocab = sorted(set(text))
         self.n_vocab = len(self.vocab)
 
@@ -102,7 +112,8 @@ train = text_ids[:k]
 test = text_ids[k:]
 
 
-def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Float[Tensor, 'B T C'], Float[Tensor, 'B T C']]:
+@jaxtyped(typechecker=typechecker)
+def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Integer[Tensor, 'B T'], Integer[Tensor, 'B T']]:
     """ Create a random batch of examples. This consists of two tensors of the
     same shape, x and y. y is just x offset by one timestep so that each
     position in y corresponds to the same position in x but one timestep
@@ -121,7 +132,8 @@ def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Floa
     return x, y
 
 
-def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, context_length: int) -> Dict[str, Float[Tensor, '...']]:
+@jaxtyped(typechecker=typechecker)
+def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, context_length: int) -> Dict[str, float]:
     """ Estimates the loss of the model by randomly sampling `eval_iters`
     batches and averaging the loss. It's not an exhaustive evaluation of the
     test set.
@@ -135,7 +147,7 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, cont
             x, y = create_batch(batch_size, context_length, split)
             _, loss = model(x, y)
             losses[iter] = loss.item()
-        result[split] = losses.mean()
+        result[split] = losses.mean().item()
     return result
 
 
@@ -152,6 +164,7 @@ class Attention(torch.nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
         self.register_buffer('tril', torch.tril(torch.ones(context_length, context_length)))
 
+    @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         K: Float[Tensor, 'B T H'] = self.Wk(x)
         Q: Float[Tensor, 'B T H'] = self.Wq(x)
@@ -171,6 +184,7 @@ class MultiHeadAttention(torch.nn.Module):
         self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_heads), dropout, context_length) for _ in range(num_heads))
         self.proj = torch.nn.Linear(output_dim, output_dim)
 
+    @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         head_outs = [head(x) for head in self.heads]
         return self.proj(torch.cat(head_outs, dim=-1))
@@ -187,6 +201,7 @@ class TransformerLayer(torch.nn.Module):
         self.mh_dropout = torch.nn.Dropout(dropout)
         self.ff_dropout = torch.nn.Dropout(dropout)
 
+    @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         x = x + self.mh_dropout(self.mh_attention(self.layernorm1(x)))
         x = x + self.ff_dropout(self.proj(torch.nn.functional.gelu(self.ff(self.layernorm2(x)))))
@@ -194,7 +209,7 @@ class TransformerLayer(torch.nn.Module):
 
 
 class GPT(torch.nn.Module):
-    def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float, num_heads: int):
+    def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float, num_heads: int) -> None:
         super().__init__()
         self.embedding = torch.nn.Embedding(n_vocab, hdim)
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
@@ -203,7 +218,8 @@ class GPT(torch.nn.Module):
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = torch.nn.LayerNorm(hdim)
 
-    def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '...']]]:
+    @jaxtyped(typechecker=typechecker)
+    def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '']]]:
         T = x.shape[-1]
         x = self.embedding(x) + self.pos_embedding(torch.arange((T), device=args.device))
         for layer in self.layers:
@@ -218,10 +234,12 @@ class GPT(torch.nn.Module):
             logits = logits.view(B*T, C)
             y = y.view(B*T)
             loss = self.loss_fn(logits, y)
-            return logits, loss
+            return logits.view(B, T, C), loss
 
-    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False, greedy=False, topk=None) -> Integer[Tensor, 'B T']:
-        for _ in range(max_output_length):
+    @jaxtyped(typechecker=typechecker)
+    def generate(self, context: Integer[Tensor, 'B T'], max_output_length: int, context_length: int, payg=False, greedy=False, topk=None) -> Integer[Tensor, 'B max_output_length']:
+        T = context.shape[-1]
+        for _ in range(max_output_length-T):
             # Convert context into input IDs. This requires knowing context size.
             logits, _ = self(context[:, -context_length:]) # B T C
             logits = logits[:, -1, :]
@@ -238,7 +256,11 @@ class GPT(torch.nn.Module):
             # Then feed those words as context in. Once you get to length `context_size` start doing a sliding window.
             context = torch.cat((context, idx), dim=1)
             if payg:
-                print(enc.decode([idx]), flush=True, end='')
+                B = context.shape[0]
+                if B > 1:
+                    raise ValueError("Can't print-as-you-go with batch size > 1. Either set batch size to 1 or turn off payg.")
+                char: str = enc.decode([idx])
+                print(char, flush=True, end='')
         return context
 
 gpt = GPT(enc.n_vocab, args.hidden_size, args.context_length, args.num_layers, args.dropout, args.num_heads).to(args.device)
@@ -266,5 +288,5 @@ if not args.generate_only:
             writer.add_scalar('Loss/test', result['test'], step)
 
     print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-context = torch.tensor(enc.encode('\n')).view(1, 1).to(args.device)
+context = torch.tensor([enc.encode('\n')]).to(args.device)
 gpt.generate(context, args.n_gen_tokens, args.context_length, args.payg, args.decode_greedy, args.decode_topk)
