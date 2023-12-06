@@ -93,7 +93,7 @@ text_ids = enc.encode(text)
 print(f'Length of corpus in tokens: {len(text_ids)}')
 
 k = int(args.train_fraction*len(text_ids))
-train = text_ids
+train = text_ids[:k]
 test = text_ids[k:]
 
 
