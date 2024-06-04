@@ -27,11 +27,8 @@ class SGD(torch.optim.Optimizer):
 
 class RMSProp(torch.optim.Optimizer):
     def __init__(self, params, lr, beta, eps=1e-8):
-        defaults = {'lr': lr, 'beta': beta}
+        defaults = {'lr': lr, 'beta': beta, 'eps': eps}
         super(RMSProp, self).__init__(params, defaults)
-        self.lr = lr
-        self.beta = beta
-        self.eps = eps
         # Initialize s for each parameter tensor
         for group in self.param_groups:
             for param in group['params']:
@@ -39,10 +36,13 @@ class RMSProp(torch.optim.Optimizer):
 
     def step(self):
         for group in self.param_groups:
+            lr = group['lr']
+            beta = group['beta']
+            eps = group['eps']
             for i, param in enumerate(group['params']):
                 if param.grad is None:
                     continue
                 s = self.state[param]['s']
-                s = self.beta*s + (1-self.beta)*(param.grad**2)
-                param.data -= self.lr*param.grad/(torch.sqrt(s) + self.eps)
+                s = beta*s + (1-beta)*(param.grad**2)
+                param.data -= lr*param.grad/(torch.sqrt(s) + eps)
                 self.state[param]['s'] = s
