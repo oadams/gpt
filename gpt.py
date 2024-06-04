@@ -322,7 +322,7 @@ print(f'Total parameters in model: {total_params}')
 
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
-optim = SGD(gpt.parameters(), lr=.01)
+optim = SGD(gpt.parameters(), lr=.01, momentum_beta=0.9)
 
 if not args.generate_only:
     gpt.train()
