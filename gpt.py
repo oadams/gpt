@@ -22,6 +22,8 @@ import torch.random
 from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
 
+from optimizers import SGD
+
 
 def get_device():
     """ Make use of the best hardware we have available. Leverage Apple Silicon
@@ -60,11 +62,11 @@ parser.add_argument('--num_layers', default=6)
 parser.add_argument('--num_heads', default=4)
 parser.add_argument('--dropout', default=0.2)
 parser.add_argument('--n_estimate_steps', default=100, help='The number of steps to take in loss estimation (it is probabilistic)')
-parser.add_argument('--n_gen_tokens', type=int, default=100, help='The number of tokens to generate during inference.')
+parser.add_argument('--n_gen_tokens', type=int, default=500, help='The number of tokens to generate during inference.')
 parser.add_argument('--train_steps', default=10000)
-parser.add_argument('--save_eval_every_n_steps', default=1000)
+parser.add_argument('--save_eval_every_n_steps', default=100)
 parser.add_argument('--model_path', default='model_1000.pth')
-parser.add_argument('--generate_only', default=True, action='store_true')
+parser.add_argument('--generate_only', default=False, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
 parser.add_argument('--decode_greedy', default=False, action='store_true')
 parser.add_argument('--decode_topk', default=None, type=int)
@@ -320,6 +322,7 @@ print(f'Total parameters in model: {total_params}')
 
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
+optim = SGD(gpt.parameters(), lr=.01)
 
 if not args.generate_only:
     gpt.train()
@@ -332,6 +335,7 @@ if not args.generate_only:
         if step % args.save_eval_every_n_steps == 0:
             torch.save(gpt.state_dict(), f'model_{step}.pth')
             result = estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
+            print(result)
             writer.add_scalar('Loss/train', result['train'], step)
             writer.add_scalar('Loss/test', result['test'], step)
 
