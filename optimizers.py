@@ -10,7 +10,7 @@ class SGD(torch.optim.Optimizer):
         self.momentum_beta = momentum_beta
         # Initialize momentum for each parameter tensor
         for group in self.param_groups:
-            group['momentum'] = [torch.zeros(param.shape, dtype=param.dtype, device=param.device) for param in group['params']]
+            group['momentum'] = [torch.zeros_like(param) for param in group['params']]
 
     def step(self):
         for group in self.param_groups:
@@ -19,5 +19,5 @@ class SGD(torch.optim.Optimizer):
                     continue
                 # Important to modify param.data and not param, because autograd will 
                 # track operations on param, but not the underlying param.data.
-                group['momentum'][i] = self.momentum_beta*param.grad + (1-self.momentum_beta)*group['momentum'][i]
+                group['momentum'][i] = self.momentum_beta*group['momentum'][i] + (1-self.momentum_beta)*param.grad
                 param.data -= self.lr*group['momentum'][i]
