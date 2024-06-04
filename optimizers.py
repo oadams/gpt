@@ -72,6 +72,43 @@ class Adam(torch.optim.Optimizer):
                 s = self.state[param]['s']
                 v = beta1*v + (1-beta1)*param.grad
                 s = beta2*s + (1-beta2)*(param.grad**2)
+                self.state[param]['s'] = s
+                self.state[param]['v'] = s
                 v = v / (1-beta1**self.step_t)
                 s = s / (1-beta2**self.step_t)
                 param.data -= lr*v/(torch.sqrt(s)+eps)
+        self.step_t += 1
+
+
+class AdamW(torch.optim.Optimizer):
+    def __init__(self, params, lr, beta1=0.9, beta2=0.999, lambda_=0.01, eps=1e-8):
+        defaults = {'lr': lr, 'beta1': beta1, 'beta2': beta2, 'lambda_': lambda_, 'eps': eps}
+        super(AdamW, self).__init__(params, defaults)
+        # Initialize v and s for each parameter tensor
+        for group in self.param_groups:
+            for param in group['params']:
+                self.state[param]['v'] = torch.zeros_like(param)
+                self.state[param]['s'] = torch.zeros_like(param)
+        self.step_t = 1
+
+    def step(self):
+        for group in self.param_groups:
+            lr = group['lr']
+            beta1 = group['beta1']
+            beta2 = group['beta2']
+            lambda_ = group['lambda_']
+            eps = group['eps']
+            for param in group['params']:
+                if param.grad is None:
+                    continue
+                param.data *= (1 - lambda_*lr)
+                v = self.state[param]['v']
+                s = self.state[param]['s']
+                v = beta1*v + (1-beta1)*param.grad
+                s = beta2*s + (1-beta2)*(param.grad**2)
+                self.state[param]['s'] = s
+                self.state[param]['v'] = v
+                v = v / (1-beta1**self.step_t)
+                s = s / (1-beta2**self.step_t)
+                param.data -= lr*v/(torch.sqrt(s)+eps)
+        self.step_t += 1

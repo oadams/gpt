@@ -22,7 +22,7 @@ import torch.random
 from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
 
-from optimizers import SGD, RMSProp, Adam
+from optimizers import SGD, RMSProp, Adam, AdamW
 
 
 def get_device():
@@ -65,7 +65,7 @@ parser.add_argument('--n_estimate_steps', default=100, help='The number of steps
 parser.add_argument('--n_gen_tokens', type=int, default=500, help='The number of tokens to generate during inference.')
 parser.add_argument('--train_steps', default=10000)
 parser.add_argument('--save_eval_every_n_steps', default=100)
-parser.add_argument('--model_path', default='model_1000.pth')
+parser.add_argument('--model_path')#, default='model_1000.pth')
 parser.add_argument('--generate_only', default=False, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
 parser.add_argument('--decode_greedy', default=False, action='store_true')
@@ -321,10 +321,10 @@ print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
 
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 optim = SGD(gpt.parameters(), lr=.01, momentum_beta=0.9)
 optim = RMSProp(gpt.parameters(), lr=0.001, beta=0.99)
-optim = Adam(gpt.parameters(), lr=3e-4)
+optim = AdamW(gpt.parameters(), lr=args.lr)
+optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
 if not args.generate_only:
     gpt.train()
