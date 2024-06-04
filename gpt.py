@@ -22,7 +22,7 @@ import torch.random
 from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
 
-from optimizers import SGD, RMSProp
+from optimizers import SGD, RMSProp, Adam
 
 
 def get_device():
@@ -324,6 +324,7 @@ print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_le
 optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 optim = SGD(gpt.parameters(), lr=.01, momentum_beta=0.9)
 optim = RMSProp(gpt.parameters(), lr=0.001, beta=0.99)
+optim = Adam(gpt.parameters(), lr=3e-4)
 
 if not args.generate_only:
     gpt.train()
