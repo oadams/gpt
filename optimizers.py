@@ -1,4 +1,10 @@
-""" Optimizers for updating weights of a neural network. """
+""" Optimizers for updating weights of a neural network.
+
+These optimizers are written for interpretability, not for maximum efficiency. If you inspect
+the torch.optim code, you'll see use of various in place operations like lerp_, addcmul_, etc.
+We could use these to speed this up (which would be a useful learning exercise by itself), but
+we'll focus on just the readability here.
+"""
 
 import torch
 

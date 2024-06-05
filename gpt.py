@@ -66,7 +66,7 @@ parser.add_argument('--n_gen_tokens', type=int, default=500, help='The number of
 parser.add_argument('--train_steps', default=10000)
 parser.add_argument('--save_eval_every_n_steps', default=100)
 parser.add_argument('--model_path')#, default='model_1000.pth')
-parser.add_argument('--generate_only', default=False, action='store_true')
+parser.add_argument('--generate_only', default=True, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
 parser.add_argument('--decode_greedy', default=False, action='store_true')
 parser.add_argument('--decode_topk', default=None, type=int)
@@ -309,7 +309,7 @@ class GPT(torch.nn.Module):
                 B = context.shape[0]
                 if B > 1:
                     raise ValueError("Can't print-as-you-go with batch size > 1. Either set batch size to 1 or turn off payg.")
-                char: str = enc.decode([idx])
+                char: str = enc.decode([int(idx.item())])
                 print(char, flush=True, end='')
         return context
 
@@ -321,10 +321,10 @@ print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
 
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
-optim = SGD(gpt.parameters(), lr=.01, momentum_beta=0.9)
-optim = RMSProp(gpt.parameters(), lr=0.001, beta=0.99)
+#optim = SGD(gpt.parameters(), lr=.01, momentum_beta=0.9)
+#optim = RMSProp(gpt.parameters(), lr=0.001, beta=0.99)
 optim = AdamW(gpt.parameters(), lr=args.lr)
-optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
+#optim = torch.optim.AdamW(gpt.parameters(), lr=args.lr)
 
 if not args.generate_only:
     gpt.train()
