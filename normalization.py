@@ -13,8 +13,8 @@ class LayerNorm(torch.nn.Module):
         self.beta = self.beta.to(x.device)
         self.gamma = self.gamma.to(x.device)
         # Compute mean and variance across time
-        mean = x.mean(dim=1, keepdim=True)
-        var = x.var(dim=1, keepdim=True)
+        mean = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True)
         # Normalize by mean and variance
         x = (x - mean) / torch.sqrt(var + self.eps)
         # multiply by beta and add gamma
