@@ -24,6 +24,7 @@ import tqdm
 
 from optimizers import AdamW
 from normalization import LayerNorm
+from activations import GeLU
 
 
 def get_device():
@@ -242,12 +243,13 @@ class TransformerLayer(torch.nn.Module):
         self.layernorm2 = LayerNorm(output_dim)
         self.mh_dropout = torch.nn.Dropout(dropout)
         self.ff_dropout = torch.nn.Dropout(dropout)
+        self.gelu = GeLU()
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
         # x = x + y is a residiual connection.
         x = x + self.mh_dropout(self.mh_attention(self.layernorm1(x)))
-        x = x + self.ff_dropout(self.proj(torch.nn.functional.gelu(self.ff(self.layernorm2(x)))))
+        x = x + self.ff_dropout(self.proj(self.gelu(self.ff(self.layernorm2(x)))))
         return x
 
 
