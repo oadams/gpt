@@ -23,6 +23,9 @@ from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
 
 from optimizers import SGD, RMSProp, Adam, AdamW
+from normalization import LayerNorm
+
+LayerNorm = torch.nn.LayerNorm
 
 
 def get_device():
@@ -66,7 +69,7 @@ parser.add_argument('--n_gen_tokens', type=int, default=500, help='The number of
 parser.add_argument('--train_steps', default=10000)
 parser.add_argument('--save_eval_every_n_steps', default=100)
 parser.add_argument('--model_path')#, default='model_1000.pth')
-parser.add_argument('--generate_only', default=True, action='store_true')
+parser.add_argument('--generate_only', default=False, action='store_true')
 parser.add_argument('--payg', default=True, help='Print as you go')
 parser.add_argument('--decode_greedy', default=False, action='store_true')
 parser.add_argument('--decode_topk', default=None, type=int)
@@ -237,8 +240,8 @@ class TransformerLayer(torch.nn.Module):
         # In the original paper they said d_model is 512 and d_ff is 2048. This is why we use a 4x ratio here.
         self.ff = torch.nn.Linear(output_dim, 4*output_dim)
         self.proj = torch.nn.Linear(4*output_dim, output_dim)
-        self.layernorm1 = torch.nn.LayerNorm(output_dim)
-        self.layernorm2 = torch.nn.LayerNorm(output_dim)
+        self.layernorm1 = LayerNorm(output_dim)
+        self.layernorm2 = LayerNorm(output_dim)
         self.mh_dropout = torch.nn.Dropout(dropout)
         self.ff_dropout = torch.nn.Dropout(dropout)
 
@@ -259,7 +262,7 @@ class GPT(torch.nn.Module):
         self.final_proj = torch.nn.Linear(hdim, n_vocab)
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
-        self.layernorm = torch.nn.LayerNorm(hdim)
+        self.layernorm = LayerNorm(hdim)
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '']]]:
