@@ -25,6 +25,7 @@ import tqdm
 from optimizers import AdamW
 from normalization import LayerNorm
 from activations import GeLU
+from regularization import Dropout
 
 
 def get_device():
@@ -210,7 +211,7 @@ class Attention(torch.nn.Module):
         self.Wk = Linear(self.input_dim, self.output_dim, bias=False)
         self.Wq = Linear(self.input_dim, self.output_dim, bias=False)
         self.Wv = Linear(self.input_dim, self.output_dim, bias=False)
-        self.dropout = torch.nn.Dropout(dropout)
+        self.dropout = Dropout(dropout)
         # register_buffer just stores this tensor in the model not as a parameter, so the optimizer
         # won't do anything with them.
         # tril is a triangular lower matrix and it's what we use to mask out the future tokens.
@@ -274,8 +275,8 @@ class TransformerLayer(torch.nn.Module):
         self.proj = Linear(4*output_dim, output_dim)
         self.layernorm1 = LayerNorm(output_dim)
         self.layernorm2 = LayerNorm(output_dim)
-        self.mh_dropout = torch.nn.Dropout(dropout)
-        self.ff_dropout = torch.nn.Dropout(dropout)
+        self.mh_dropout = Dropout(dropout)
+        self.ff_dropout = Dropout(dropout)
         self.gelu = GeLU()
 
     @jaxtyped(typechecker=typechecker)
