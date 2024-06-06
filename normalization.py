@@ -12,7 +12,7 @@ class LayerNorm(torch.nn.Module):
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T C']:
         self.beta = self.beta.to(x.device)
         self.gamma = self.gamma.to(x.device)
-        # Compute mean and variance across time
+        # Compute mean and variance across feature dim for each example
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, keepdim=True)
         # Normalize by mean and variance

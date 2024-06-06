@@ -164,6 +164,39 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, cont
     return result
 
 
+class Linear(torch.nn.Module):
+    """ Assumes a ReLU activation function. """
+
+    def __init__(self, input_dim, output_dim, bias=True, initialization='kaiming_uniform'):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.bias = bias
+        self.W = torch.nn.Parameter(torch.empty((output_dim, input_dim)))
+        if self.bias:
+            self.b = torch.nn.Parameter(torch.empty((output_dim)))
+
+        if initialization == 'kaiming_uniform':
+            torch.nn.init.uniform_(self.W, a=-math.sqrt(1/self.input_dim), b=math.sqrt(1/self.input_dim))
+            if self.bias:
+                torch.nn.init.uniform_(self.b, a=-math.sqrt(1/self.input_dim), b=math.sqrt(1/self.input_dim))
+        elif initialization == 'kaiming_normal':
+            # TODO Test
+            torch.nn.init.normal_(self.W, std=math.sqrt(2/self.input_dim))
+            if self.bias:
+                torch.nn.init.normal_(self.b, std=math.sqrt(2/self.input_dim))
+
+    def forward(self, x):
+        # o = output dim
+        # i = input_dim
+        # b = batch dim
+        # t = time dim
+        result = torch.einsum('oi,bti->bto',self.W,x)
+        if self.bias:
+            result += self.b
+        return result
+
+
 class Attention(torch.nn.Module):
     """ Single head attention module. """
 
@@ -174,9 +207,9 @@ class Attention(torch.nn.Module):
         # Why do we disable biases for these linear layers?
         # One Answer: Our Q,K,V are just linear projections of the input, so we
         # don't need an extra bias.
-        self.Wk = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
-        self.Wq = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
-        self.Wv = torch.nn.Linear(self.input_dim, self.output_dim, bias=False)
+        self.Wk = Linear(self.input_dim, self.output_dim, bias=False)
+        self.Wq = Linear(self.input_dim, self.output_dim, bias=False)
+        self.Wv = Linear(self.input_dim, self.output_dim, bias=False)
         self.dropout = torch.nn.Dropout(dropout)
         # register_buffer just stores this tensor in the model not as a parameter, so the optimizer
         # won't do anything with them.
@@ -213,7 +246,7 @@ class MultiHeadAttention(torch.nn.Module):
         super().__init__()
         assert output_dim % num_heads == 0
         self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_heads), dropout, context_length) for _ in range(num_heads))
-        self.proj = torch.nn.Linear(output_dim, output_dim)
+        self.proj = Linear(output_dim, output_dim)
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
@@ -237,8 +270,8 @@ class TransformerLayer(torch.nn.Module):
         super().__init__()
         self.mh_attention = MultiHeadAttention(input_dim, output_dim, num_heads, dropout, context_length)
         # In the original paper they said d_model is 512 and d_ff is 2048. This is why we use a 4x ratio here.
-        self.ff = torch.nn.Linear(output_dim, 4*output_dim)
-        self.proj = torch.nn.Linear(4*output_dim, output_dim)
+        self.ff = Linear(output_dim, 4*output_dim)
+        self.proj = Linear(4*output_dim, output_dim)
         self.layernorm1 = LayerNorm(output_dim)
         self.layernorm2 = LayerNorm(output_dim)
         self.mh_dropout = torch.nn.Dropout(dropout)
@@ -259,7 +292,7 @@ class GPT(torch.nn.Module):
         self.embedding = torch.nn.Embedding(n_vocab, hdim)
         # These are learned absolute positional embeddings. Many other options abound.
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
-        self.final_proj = torch.nn.Linear(hdim, n_vocab)
+        self.final_proj = Linear(hdim, n_vocab)
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = LayerNorm(hdim)
