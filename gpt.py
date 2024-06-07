@@ -26,6 +26,7 @@ from optimizers import AdamW
 from normalization import LayerNorm
 from activations import GeLU, Softmax
 from regularization import Dropout
+from loss import CrossEntropyLoss
 from linear import Linear
 
 
@@ -264,7 +265,7 @@ class GPT(torch.nn.Module):
         # These are learned absolute positional embeddings. Many other options abound.
         self.pos_embedding = torch.nn.Embedding(context_length, hdim)
         self.final_proj = Linear(hdim, n_vocab)
-        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.loss_fn = CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = LayerNorm(hdim)
         self.softmax = Softmax()
