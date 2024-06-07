@@ -24,7 +24,7 @@ import tqdm
 
 from optimizers import AdamW
 from normalization import LayerNorm
-from activations import GeLU
+from activations import GeLU, Softmax
 from regularization import Dropout
 from linear import Linear
 
@@ -185,6 +185,7 @@ class Attention(torch.nn.Module):
         # won't do anything with them.
         # tril is a triangular lower matrix and it's what we use to mask out the future tokens.
         self.register_buffer('tril', torch.tril(torch.ones(context_length, context_length)))
+        self.softmax = Softmax()
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T H']:
@@ -198,7 +199,7 @@ class Attention(torch.nn.Module):
         # The magic to mask out future tokens. We set the future tokens to -inf so that when we
         # do a softmax they get a probability of 0.
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
-        wei = wei.softmax(dim=-1)
+        wei = self.softmax(wei, dim=-1)
         wei = self.dropout(wei)
         return wei @ V
 
@@ -266,6 +267,7 @@ class GPT(torch.nn.Module):
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = LayerNorm(hdim)
+        self.softmax = Softmax()
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Integer[Tensor, 'B T'], y: Optional[Integer[Tensor, 'B T']] = None) -> Tuple[Float[Tensor, 'B T C'], Optional[Float[Tensor, '']]]:
@@ -295,7 +297,7 @@ class GPT(torch.nn.Module):
             # Grab the final token. This is where we'll get the probabilities for the next token from.
             logits = logits[:, -1, :]
             # Now find the token closest to this logit.
-            probs = torch.nn.functional.softmax(logits, dim=-1)
+            probs = self.softmax(logits, dim=-1)
             if greedy:
                 # Take the most likely token at each time step.
                 idx = torch.argmax(probs, dim=1)[:, None]
