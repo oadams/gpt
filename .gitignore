@@ -1,1 +1,6 @@
 model_*
+__pycache__
+.python-version
+.vscode/
+data/
+runs/
