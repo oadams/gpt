@@ -27,7 +27,7 @@ from normalization import LayerNorm
 from activations import GeLU, Softmax
 from regularization import Dropout
 from loss import CrossEntropyLoss
-from linear import Linear
+from linear import Linear, Embedding
 
 
 def get_device():
@@ -54,7 +54,7 @@ def get_device():
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--corpus', default='crime_and_punishment.txt', help='Plain UTF-8 text file as training data. Gets split 90/10')
+parser.add_argument('--corpus', default='data/crime_and_punishment.txt', help='Plain UTF-8 text file as training data. Gets split 90/10')
 parser.add_argument('--device', default=get_device())
 parser.add_argument('--tokenizer', default='char', choices=['char', 'bpe'])
 parser.add_argument('--random_seed', default=0)
@@ -261,9 +261,9 @@ class TransformerLayer(torch.nn.Module):
 class GPT(torch.nn.Module):
     def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float, num_heads: int) -> None:
         super().__init__()
-        self.embedding = torch.nn.Embedding(n_vocab, hdim)
+        self.embedding = Embedding(n_vocab, hdim)
         # These are learned absolute positional embeddings. Many other options abound.
-        self.pos_embedding = torch.nn.Embedding(context_length, hdim)
+        self.pos_embedding = Embedding(context_length, hdim)
         self.final_proj = Linear(hdim, n_vocab)
         self.loss_fn = CrossEntropyLoss()
         self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])

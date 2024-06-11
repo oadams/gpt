@@ -1,5 +1,8 @@
-import torch
 import math
+
+from jaxtyping import Integer
+import torch
+from torch import Tensor
 
 class Linear(torch.nn.Module):
     """ Assumes a ReLU activation function. """
@@ -32,3 +35,15 @@ class Linear(torch.nn.Module):
         if self.bias:
             result += self.b
         return result
+
+
+class Embedding(torch.nn.Module):
+    def __init__(self, n_embed, hdim):#, device=None):
+        #factory_kwargs = {'device': device}
+        super().__init__()
+        # How to initialize the weights? Probably just use the kaiming initialization of linear? Nope, it's N(0, 1)
+        self.embs = torch.nn.Parameter(torch.empty((n_embed, hdim)))
+        torch.nn.init.normal_(self.embs)
+
+    def forward(self, indices):
+        return self.embs[indices, :]

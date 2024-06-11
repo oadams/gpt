@@ -10,8 +10,6 @@ class LayerNorm(torch.nn.Module):
         self.eps = eps
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T C']:
-        self.beta = self.beta.to(x.device)
-        self.gamma = self.gamma.to(x.device)
         # Compute mean and variance across feature dim for each example.
         # It's never been so clear to me why we take the mean across the feature dim and not across the T dim, or across B*T.
         # All I can say is that I did try it once (setting dim=1 below) and the network failed to learn.
