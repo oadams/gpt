@@ -4,6 +4,8 @@ from jaxtyping import Integer
 import torch
 from torch import Tensor
 
+from initialization import uniform_, normal_
+
 class Linear(torch.nn.Module):
     """ Assumes a ReLU activation function. """
 
@@ -17,14 +19,14 @@ class Linear(torch.nn.Module):
             self.b = torch.nn.Parameter(torch.empty((output_dim)))
 
         if initialization == 'kaiming_uniform':
-            torch.nn.init.uniform_(self.W, a=-math.sqrt(1/self.input_dim), b=math.sqrt(1/self.input_dim))
+            uniform_(self.W, a=-math.sqrt(1/self.input_dim), b=math.sqrt(1/self.input_dim))
             if self.bias:
-                torch.nn.init.uniform_(self.b, a=-math.sqrt(1/self.input_dim), b=math.sqrt(1/self.input_dim))
+                uniform_(self.b, a=-math.sqrt(1/self.input_dim), b=math.sqrt(1/self.input_dim))
         elif initialization == 'kaiming_normal':
             # TODO Test
-            torch.nn.init.normal_(self.W, std=math.sqrt(2/self.input_dim))
+            normal_(self.W, std=math.sqrt(2/self.input_dim))
             if self.bias:
-                torch.nn.init.normal_(self.b, std=math.sqrt(2/self.input_dim))
+                normal_(self.b, std=math.sqrt(2/self.input_dim))
 
     def forward(self, x):
         # o = output dim
