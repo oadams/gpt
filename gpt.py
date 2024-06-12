@@ -17,7 +17,6 @@ import platform
 import tiktoken
 import torch
 from torch import Tensor
-import torch.nn
 import torch.random
 from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
@@ -29,6 +28,7 @@ from regularization import Dropout
 from loss import CrossEntropyLoss
 from linear import Linear, Embedding
 
+from config import Module, Parameter, ModuleList
 
 def get_device():
     """ Make use of the best hardware we have available. Leverage Apple Silicon
@@ -149,7 +149,7 @@ def create_batch(batch_size: int, context_length: int, split: str) -> Tuple[Inte
 
 
 @jaxtyped(typechecker=typechecker)
-def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, context_length: int) -> Dict[str, float]:
+def estimate_loss(model: Module, eval_iters: int, batch_size: int, context_length: int) -> Dict[str, float]:
     """ Estimates the loss of the model by randomly sampling `eval_iters`
     batches and averaging the loss. It's not an exhaustive evaluation of the
     test set.
@@ -168,7 +168,7 @@ def estimate_loss(model: torch.nn.Module, eval_iters: int, batch_size: int, cont
 
 
 
-class Attention(torch.nn.Module):
+class Attention(Module):
     """ Single head attention module. """
 
     def __init__(self, input_dim: int, output_dim: int, dropout: float, context_length: int) -> None:
@@ -205,7 +205,7 @@ class Attention(torch.nn.Module):
         return wei @ V
 
 
-class MultiHeadAttention(torch.nn.Module):
+class MultiHeadAttention(Module):
     """ Multihead attention is just a bunch of single head attentions concatenated together before a final projection.
 
     We enforce output dim to be divisible by number of heads and then for our
@@ -217,7 +217,7 @@ class MultiHeadAttention(torch.nn.Module):
     def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float, context_length: int) -> None:
         super().__init__()
         assert output_dim % num_heads == 0
-        self.heads = torch.nn.ModuleList(Attention(input_dim, int(output_dim / num_heads), dropout, context_length) for _ in range(num_heads))
+        self.heads = ModuleList(Attention(input_dim, int(output_dim / num_heads), dropout, context_length) for _ in range(num_heads))
         self.proj = Linear(output_dim, output_dim)
 
     @jaxtyped(typechecker=typechecker)
@@ -226,7 +226,7 @@ class MultiHeadAttention(torch.nn.Module):
         return self.proj(torch.cat(head_outs, dim=-1))
 
 
-class TransformerLayer(torch.nn.Module):
+class TransformerLayer(Module):
     """ A transformer 'block' or 'layer'.
     
     We use the pre-normalization variant of the transformer, which is popular.
@@ -258,7 +258,7 @@ class TransformerLayer(torch.nn.Module):
         return x
 
 
-class GPT(torch.nn.Module):
+class GPT(Module):
     def __init__(self, n_vocab: int, hdim: int, context_length: int, num_layers: int, dropout: float, num_heads: int) -> None:
         super().__init__()
         self.embedding = Embedding(n_vocab, hdim)
@@ -266,7 +266,7 @@ class GPT(torch.nn.Module):
         self.pos_embedding = Embedding(context_length, hdim)
         self.final_proj = Linear(hdim, n_vocab)
         self.loss_fn = CrossEntropyLoss()
-        self.layers = torch.nn.ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
+        self.layers = ModuleList([TransformerLayer(hdim, hdim, num_heads, dropout, context_length) for _ in range(num_layers)])
         self.layernorm = LayerNorm(hdim)
         self.softmax = Softmax()
 
@@ -323,8 +323,9 @@ class GPT(torch.nn.Module):
         return context
 
 gpt = GPT(enc.n_vocab, args.hidden_size, args.context_length, args.num_layers, args.dropout, args.num_heads).to(args.device)
-if args.model_path is not None:
-    gpt.load_state_dict(torch.load(args.model_path))
+# TODO Implement Module.load_state_dict()
+#if args.model_path is not None:
+#    gpt.load_state_dict(torch.load(args.model_path))
 total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
@@ -341,7 +342,8 @@ if not args.generate_only:
         loss.backward()
         optim.step()
         if step % args.save_eval_every_n_steps == 0:
-            torch.save(gpt.state_dict(), f'model_{step}.pth')
+            # TODO Implement Module.state_dict()
+            #torch.save(gpt.state_dict(), f'model_{step}.pth')
             result = estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
             print(result)
             writer.add_scalar('Loss/train', result['train'], step)

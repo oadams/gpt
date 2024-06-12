@@ -2,7 +2,9 @@
 
 import torch
 
-class Dropout(torch.nn.Module):
+from config import Module
+
+class Dropout(Module):
     def __init__(self, p):
         super().__init__()
         self.p = p

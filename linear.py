@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 
 from initialization import uniform_, normal_
-from containers import Module, Parameter
+from config import Module, Parameter
 
 class Linear(Module):
     """ Assumes a ReLU activation function. """
@@ -49,7 +49,7 @@ class Embedding(Module):
         super().__init__()
         # How to initialize the weights? Probably just use the kaiming initialization of linear? Nope, it's N(0, 1)
         self.embs = Parameter(torch.empty((n_embed, hdim)))
-        torch.nn.init.normal_(self.embs)
+        normal_(self.embs)
 
     def forward(self, indices):
         return self.embs[indices, :]

@@ -3,16 +3,18 @@
 import math
 import torch
 
-class GeLU(torch.nn.Module):
+from config import Module
+
+class GeLU(Module):
     def forward(self, x):
         return x * 0.5 * (1 + torch.erf(x/math.sqrt(2)))
 
-class UnstableSoftmax(torch.nn.Module):
+class UnstableSoftmax(Module):
     def forward(self, x, dim):
         x = torch.exp(x)
         return x / x.sum(dim=dim, keepdim=True)
 
-class Softmax(torch.nn.Module):
+class Softmax(Module):
     def forward(self, x, dim):
         m = x.max(dim=dim, keepdim=True).values
         x = torch.exp(x - m)

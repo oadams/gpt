@@ -6,8 +6,9 @@ from torch import Tensor
 from jaxtyping import Float, Integer
 
 from activations import Softmax
+from config import Module, Parameter
 
-class NaiveCrossEntropyLoss(torch.nn.Module):
+class NaiveCrossEntropyLoss(Module):
     def __init__(self):
         super().__init__()
         self.softmax = Softmax()
@@ -37,7 +38,7 @@ class NaiveCrossEntropyLoss(torch.nn.Module):
             raise ValueError(f"Unsupported reduction: '{reduction}'")
 
 
-class CrossEntropyLoss(torch.nn.Module):
+class CrossEntropyLoss(Module):
     def __init__(self):
         super().__init__()
 

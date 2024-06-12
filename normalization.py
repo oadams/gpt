@@ -2,11 +2,13 @@ import torch
 from torch import Tensor
 from jaxtyping import Float
 
-class LayerNorm(torch.nn.Module):
+from config import Module, Parameter
+
+class LayerNorm(Module):
     def __init__(self, output_dim: int, eps=1e-5):
         super().__init__()
-        self.beta = torch.nn.Parameter(torch.zeros((output_dim), dtype=torch.float32))
-        self.gamma = torch.nn.Parameter(torch.ones((output_dim), dtype=torch.float32))
+        self.beta = Parameter(torch.zeros((output_dim), dtype=torch.float32))
+        self.gamma = Parameter(torch.ones((output_dim), dtype=torch.float32))
         self.eps = eps
 
     def forward(self, x: Float[Tensor, 'B T C']) -> Float[Tensor, 'B T C']:
