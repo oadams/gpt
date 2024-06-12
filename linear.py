@@ -58,4 +58,8 @@ class Embedding(Module):
 if __name__ == '__main__':
     x = torch.randn((10, 10, 10))
     linear = Linear(10, 40)
+    e = Embedding(10, 20)
+    print(e.embs.is_leaf)
+    e.to('mps')
+    print(e.embs.is_leaf)
     x = 1

@@ -39,6 +39,13 @@ class Module(ABC):
             for p in module.parameters():
                 yield p 
 
+    def named_parameters(self):
+        for n, p in self.params.items():
+            yield n, p
+        for module in self.modules.values():
+            for n, p in module.named_parameters():
+                yield n, p 
+
     def train(self):
         """ Set the train flag to True recursively"""
         self.training = True
@@ -64,7 +71,8 @@ class Module(ABC):
         Note that Module.to() operates in place, while Parameter.to() defers to the torch.Tensor implementation which returns a new tensor.
         """
         for name, param in self.params.items():
-            self.__setattr__(name, param.to(device))
+            with torch.no_grad():
+                self.__setattr__(name, param.to(device))
         for name, buffer in self.buffers.items():
             buffer = buffer.to(device)
             self.__setattr__(name, buffer)

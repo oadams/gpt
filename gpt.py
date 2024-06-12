@@ -330,6 +330,14 @@ total_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
 print('Model: ', gpt)
 print(f'Total parameters in model: {total_params}')
 
+for n, param in gpt.named_parameters():
+    print(n)
+    print(f'is_leaf: {param.is_leaf}')
+    print(f'requires_grad: {param.requires_grad}')
+    #assert param.is_leaf, "Parameters must be leaf tensors"
+    #assert param.requires_grad, "Parameters must require gradients"
+    print('----')
+
 print(estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length))
 optim = AdamW(gpt.parameters(), lr=args.lr)
 
