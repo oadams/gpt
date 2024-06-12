@@ -40,14 +40,14 @@ class NaiveCrossEntropyLoss(torch.nn.Module):
 class CrossEntropyLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.softmax = Softmax()
 
     def forward(self, input: Float[Tensor, 'N C'], target: Integer[Tensor, 'N'], reduction='mean'):
         """ Input is logits, target is the ID of the class"""
 
         # Log softmax followed by negative log likelihood
         m = input.max(dim=-1, keepdim=True).values
-        log_softmax = input - m - torch.exp(input-m).sum(dim=-1, keepdim=True).log()
+        x = input - m
+        log_softmax = x - torch.exp(x).sum(dim=-1, keepdim=True).log()
 
         nl = -torch.gather(log_softmax, -1, target[:, None])
         if reduction == 'mean':
