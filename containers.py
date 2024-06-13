@@ -22,7 +22,24 @@ class Module(ABC):
             self.register_parameter(name, value)
         if isinstance(value, Module):
             self.register_module(name, value)
-        super().__setattr__(name, value)
+        else:
+            # TODO Handle case where set a parameter and buffer with the same name
+            super().__setattr__(name, value)
+
+    def __getattribute__(self, name):
+        #if name == 'params':
+        #    return super().__getattribute__('params')
+        # TODO Handle case where set a parameter and buffer with the same name
+        params = super().__getattribute__('params')
+        modules = super().__getattribute__('modules')
+        buffers = super().__getattribute__('buffers')
+        if name in params:
+            return params[name]
+        elif name in modules:
+            return modules[name]
+        elif name in buffers:
+            return buffers[name]
+        return super().__getattribute__(name)
 
     def register_parameter(self, name, value):
         """ Add parameter to our parameters attribute"""
@@ -71,11 +88,12 @@ class Module(ABC):
         Note that Module.to() operates in place, while Parameter.to() defers to the torch.Tensor implementation which returns a new tensor.
         """
         for name, param in self.params.items():
-            with torch.no_grad():
-                self.__setattr__(name, param.to(device))
+            self.register_parameter(name, param.detach().to(device).requires_grad_())
+            #self.params[name] = param.to(device)
+            #self.__setattr__(name, param.to(device))
         for name, buffer in self.buffers.items():
             buffer = buffer.to(device)
-            self.__setattr__(name, buffer)
+            #self.__setattr__(name, buffer)
             self.register_buffer(name, buffer)
         for module in self.modules.values():
             module.to(device)
