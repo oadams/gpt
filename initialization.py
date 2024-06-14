@@ -1,4 +1,4 @@
-""" Random initialization of tensors.
+"""Random initialization of tensors.
 
 This is all embarassingly parallelizable and should really be the first candidate for functions to write a custom kernal for.
 
@@ -25,13 +25,13 @@ def uniform_(t: Tensor, a=0.0, b=1.0):
 
 
 def normal_(t: Tensor, mean=0.0, std=1.0):
-    """ Assume that it's """
+    """Assume that it's"""
     dist = Normal(mean, std)
     apply_dist_(t, dist)
 
 
-if __name__ == '__main__':
-    x = torch.zeros((4,5,6))
+if __name__ == "__main__":
+    x = torch.zeros((4, 5, 6))
     print(x)
     normal_(x, mean=-4, std=0.01)
     print(x)

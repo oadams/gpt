@@ -1,4 +1,4 @@
-""" Loss functions """
+"""Loss functions"""
 
 import torch
 from torch import Tensor
@@ -8,13 +8,19 @@ from jaxtyping import Float, Integer
 from activations import Softmax
 from config import Module, Parameter
 
+
 class NaiveCrossEntropyLoss(Module):
     def __init__(self):
         super().__init__()
         self.softmax = Softmax()
 
-    def forward(self, input: Float[Tensor, 'N C'], target: Integer[Tensor, 'N'], reduction='mean'):
-        """ Input is logits, target is the ID of the class"""
+    def forward(
+        self,
+        input: Float[Tensor, "N C"],
+        target: Integer[Tensor, "N"],
+        reduction="mean",
+    ):
+        """Input is logits, target is the ID of the class"""
 
         # We need to:
         # - Convert the logits to probabilities via softmax.
@@ -30,9 +36,9 @@ class NaiveCrossEntropyLoss(Module):
         true_probs = torch.gather(probs, -1, target[:, None])
         # 3. Negative sum of the log probabilites.
         neg_log_probs = -true_probs.log()
-        if reduction == 'mean':
+        if reduction == "mean":
             return neg_log_probs.mean()
-        elif reduction == 'sum':
+        elif reduction == "sum":
             return neg_log_probs.sum()
         else:
             raise ValueError(f"Unsupported reduction: '{reduction}'")
@@ -42,8 +48,13 @@ class CrossEntropyLoss(Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input: Float[Tensor, 'N C'], target: Integer[Tensor, 'N'], reduction='mean'):
-        """ Input is logits, target is the ID of the class"""
+    def forward(
+        self,
+        input: Float[Tensor, "N C"],
+        target: Integer[Tensor, "N"],
+        reduction="mean",
+    ):
+        """Input is logits, target is the ID of the class"""
 
         # Log softmax followed by negative log likelihood
         m = input.max(dim=-1, keepdim=True).values
@@ -51,18 +62,18 @@ class CrossEntropyLoss(Module):
         log_softmax = x - torch.exp(x).sum(dim=-1, keepdim=True).log()
 
         nl = -torch.gather(log_softmax, -1, target[:, None])
-        if reduction == 'mean':
+        if reduction == "mean":
             return nl.mean()
-        elif reduction == 'sum':
+        elif reduction == "sum":
             return nl.sum()
         else:
             raise ValueError(f"Unsupported reduction: '{reduction}'")
 
 
-if __name__ == '__main__':
-    #input = torch.tensor([[100,200],[1.0,3.0], [4.0,5.0]])
-    input = torch.tensor([[100,200],[1.0,3.0]])#, [4.0,5.0]])
-    target = torch.tensor([0, 1])#, 1])
+if __name__ == "__main__":
+    # input = torch.tensor([[100,200],[1.0,3.0], [4.0,5.0]])
+    input = torch.tensor([[100, 200], [1.0, 3.0]])  # , [4.0,5.0]])
+    target = torch.tensor([0, 1])  # , 1])
     cross_entropy_loss = CrossEntropyLoss()
     loss = cross_entropy_loss(input, target)
     ref_loss = torch.nn.CrossEntropyLoss()
