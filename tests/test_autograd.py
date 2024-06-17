@@ -1,6 +1,6 @@
 import torch
 
-from tensor import Tensor
+from tensor import Tensor, GradError
 
 x_list = [[1, 2], [3, 5]]
 y_list = [[1, 2], [3, 6]]
@@ -84,3 +84,44 @@ def test_add_backwards_multinode():
     assert (w.grad == t_w.grad).all()
     assert z1.grad == t_z1.grad
     assert z2.grad == t_z2.grad
+
+
+def test_add_backwards_noarg_scalar_shape0():
+    x = Tensor(2, requires_grad=True)
+    y = Tensor(3, requires_grad=True)
+    z = x + y  # z is a scalar
+    z.backward()  # no argument
+
+    t_x = torch.tensor(2, requires_grad=True, dtype=torch.float32)
+    t_y = torch.tensor(3, requires_grad=True, dtype=torch.float32)
+    t_z = t_x + t_y
+    t_z.backward()  # no argument
+
+    assert (x.grad == t_x.grad).all()
+    assert (y.grad == t_y.grad).all()
+
+
+def test_add_backwards_noarg_scalar_shape1():
+    x = Tensor([2], requires_grad=True)
+    y = Tensor([3], requires_grad=True)
+    z = x + y  # z is a scalar
+    z.backward()  # no argument
+
+    t_x = torch.tensor([2], requires_grad=True, dtype=torch.float32)
+    t_y = torch.tensor([3], requires_grad=True, dtype=torch.float32)
+    t_z = t_x + t_y
+    t_z.backward()  # no argument
+
+    assert (x.grad == t_x.grad).all()
+    assert (y.grad == t_y.grad).all()
+
+
+def test_add_backwards_noarg_nonscalar():
+    x = Tensor(x_list, requires_grad=True)
+    y = Tensor(y_list, requires_grad=True)
+    z = x + y  # z is non-scalar
+    try:
+        z.backward()  # no argument, should raise an error
+        assert False, "Expected RuntimeError"
+    except GradError:
+        pass

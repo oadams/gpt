@@ -24,6 +24,20 @@ class Tensor:
         data_str = repr(self.data).replace("tensor", "data")
         return data_str
 
+    # def sum(self):
+    #    # TODO Handle `dim` and `keepdim` arguments
+    #    result_data = self.data.sum()
+    #    result = Tensor(
+    #        result_data,
+    #        requires_grad=self.requires_grad,
+    #        is_leaf=False
+    #    )
+    #
+    #        def backward():
+    #
+    #
+    #        return result
+
     def __add__(self, other):
         result_data = self.data + other.data
         result = Tensor(
@@ -32,8 +46,30 @@ class Tensor:
             is_leaf=False,
         )
 
-        def backward(dL_dthis):
-            if dL_dthis.data.shape != result_data.shape:
+        def backward(dl_dr=None):
+            """Run backpropagation on the sum of two tensors.
+
+            Consider the addition `r = self + other`. `r` is the result. We
+            are given dl/dr (the derivative of the loss with respect to the
+            result r). Our goal is to:
+                1. compute dl/dother and dl/dself.
+                2. If self or other are not leaf nodes, then we call their backward() with dl/dother and dl/dself
+
+            In the case of the sums, we have:
+            - dr/dself = a tensor of ones: As each element of dself changes, the corresponding element of r changes proportionally
+            - dl/dself = dl/dr * dr/dself: Each element of self can only affect the loss via the corresponding element of r, so we just take the hadamard
+            product of dl/dr with the ones tensor, resulting in dl/dr tensor again.
+            """
+            if dl_dr is None:
+                if len(result_data.shape) == 0:
+                    dl_dr = Tensor(1)
+                elif len(result_data.shape) == 1 and result_data.shape[0] == 1:
+                    dl_dr = Tensor([1])
+                else:
+                    raise GradError(
+                        "If tensor is not scalar then backwards must be called with a gradient of the same shape."
+                    )
+            if dl_dr.data.shape != result_data.shape:
                 raise GradError(
                     "dL_dthis isn't of the right shape. It needs to match the shape of the tensor we're calling backward on."
                 )
@@ -45,7 +81,7 @@ class Tensor:
             # overall the dL/d_self will just be dL/d_this element-wise times
             # ones.
             if self.requires_grad:
-                self_grad = dL_dthis.data
+                self_grad = dl_dr.data
                 if self.is_leaf:
                     if self.grad is not None:
                         self.grad = self.grad + self_grad
@@ -54,7 +90,7 @@ class Tensor:
                 else:
                     self.backward(self_grad)
             if other.requires_grad:
-                other_grad = dL_dthis.data
+                other_grad = dl_dr.data
                 if other.is_leaf:
                     if other.grad is not None:
                         other.grad = other.grad + other_grad
