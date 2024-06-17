@@ -33,7 +33,7 @@ class Tensor:
         )
 
         def backward(dL_dthis):
-            if dL_dthis.shape() != result_data.shape:
+            if dL_dthis.data.shape != result_data.shape:
                 raise GradError(
                     "dL_dthis isn't of the right shape. It needs to match the shape of the tensor we're calling backward on."
                 )
@@ -45,15 +45,23 @@ class Tensor:
             # overall the dL/d_self will just be dL/d_this element-wise times
             # ones.
             if self.requires_grad:
-                if self.grad is not None:
-                    self.grad = self.grad + dL_dthis.data
+                self_grad = dL_dthis.data
+                if self.is_leaf:
+                    if self.grad is not None:
+                        self.grad = self.grad + self_grad
+                    else:
+                        self.grad = self_grad
                 else:
-                    self.grad = dL_dthis.data
+                    self.backward(self_grad)
             if other.requires_grad:
-                if other.grad is not None:
-                    other.grad = self.grad + dL_dthis.data
+                other_grad = dL_dthis.data
+                if other.is_leaf:
+                    if other.grad is not None:
+                        other.grad = other.grad + other_grad
+                    else:
+                        other.grad = other_grad
                 else:
-                    other.grad = dL_dthis.data
+                    other.backward(other_grad)
 
         result.backward = backward
 
