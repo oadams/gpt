@@ -138,3 +138,37 @@ def test_sum_backwards():
 
     assert (x.grad == t_x.grad).all()
     assert z.grad == t_z.grad
+
+
+def test_sum_dim0_backwards():
+    x = Tensor(x_list, requires_grad=True)
+    z = x.sum(dim=0)
+    z.backward(
+        torch.arange(x.data.shape[1])
+    )  # torch.ones_like(z.data))  # supply a tensor of ones with the same shape as z
+
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_z = t_x.sum(dim=0)
+    t_z.backward(
+        torch.arange(x.data.shape[1])
+    )  # supply a tensor of ones with the same shape as t_z
+
+    assert (x.grad == t_x.grad).all()
+    assert z.grad == t_z.grad
+
+
+def test_sum_dim1_backwards():
+    x = Tensor(x_list, requires_grad=True)
+    z = x.sum(dim=1)
+    z.backward(
+        torch.arange(x.data.shape[0])
+    )  # supply a tensor of ones with the same shape as z
+
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_z = t_x.sum(dim=1)
+    t_z.backward(
+        torch.arange(x.data.shape[0])
+    )  # supply a tensor of ones with the same shape as t_z
+
+    assert (x.grad == t_x.grad).all()
+    assert z.grad == t_z.grad
