@@ -39,32 +39,17 @@ class Tensor:
                 )
             # The reason dL_dthis is the gradient is because the gradient of result with respect to self is just a tensor of ones (it's addition) so overall the dL/d_self
             # will just be dL/d_this element-wise times ones.
-            if self.grad is not None:
-                self.grad = self.grad + dL_dthis.data
-            else:
-                self.grad = dL_dthis.data
+            if self.requires_grad:
+                if self.grad is not None:
+                    self.grad = self.grad + dL_dthis.data
+                else:
+                    self.grad = dL_dthis.data
+            if other.requires_grad:
+                if other.grad is not None:
+                    other.grad = self.grad + dL_dthis.data
+                else:
+                    other.grad = dL_dthis.data
 
         result.backward = backward
 
         return result
-
-
-if __name__ == "__main__":
-    x = Tensor([[1, 2], [3, 5]], requires_grad=True)
-    y = Tensor([[1, 2], [3, 5]], requires_grad=False)
-    z = x + y
-    dL_dz = Tensor([[1, 2], [3, 4]])
-    z.backward(dL_dz)
-    print(x.grad)
-    print(y.grad)
-    print(z.grad)
-
-    x = torch.tensor([[1, 2], [3, 4]], requires_grad=True, dtype=torch.float32)
-    y = torch.tensor([[1, 2], [3, 4]], requires_grad=False, dtype=torch.float32)
-    z = x + y
-    dL_dz = torch.tensor([[1, 2], [3, 4]])
-    z.backward(dL_dz)
-    print(x.grad)
-    print(y.grad)
-    print(z.grad)
-    a = 1
