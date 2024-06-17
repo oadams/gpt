@@ -172,3 +172,20 @@ def test_sum_dim1_backwards():
 
     assert (x.grad == t_x.grad).all()
     assert z.grad == t_z.grad
+
+
+def test_sum_dim1_keepdim_backwards():
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_z = t_x.sum(dim=1, keepdim=True)
+    t_z.backward(
+        torch.arange(t_x.data.shape[0])[:, None]
+    )  # supply a tensor of ones with the same shape as t_z
+
+    x = Tensor(x_list, requires_grad=True)
+    z = x.sum(dim=1, keepdim=True)
+    z.backward(
+        torch.arange(x.data.shape[0])[:, None]
+    )  # supply a tensor of ones with the same shape as z
+
+    assert (x.grad == t_x.grad).all()
+    assert z.grad == t_z.grad

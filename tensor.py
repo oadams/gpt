@@ -89,9 +89,9 @@ class Tensor:
 
         return result
 
-    def sum(self, dim=None):
+    def sum(self, dim=None, keepdim=False):
         # TODO Handle `dim` and `keepdim` arguments
-        result_data = self.data.sum(dim=dim)
+        result_data = self.data.sum(dim=dim, keepdim=keepdim)
         result = Tensor(result_data, requires_grad=self.requires_grad, is_leaf=False)
 
         def backward(dl_dr=None):
@@ -111,9 +111,16 @@ class Tensor:
             if self.requires_grad:
                 # The elementwise product with ones is to account for a `dim` argument having collapsed the matrix along a given dimension.
                 # We just broadcast the dl_dr appropriately to fit the shape of the original matrix.
-                self_grad = dl_dr.data.unsqueeze(dim=dim) * torch.ones_like(
-                    self.data, requires_grad=False
-                )
+                if keepdim:
+                    # Then we don't need to change dl_dr because backward() will have expected it to match the shape of the result.
+                    self_grad = dl_dr.data * torch.ones_like(
+                        self.data, requires_grad=False
+                    )
+                else:
+                    # Then we need to unsqueeze dl_dr because dl_dr would have lost a dimension in order to match the shape of the result.
+                    self_grad = dl_dr.data.unsqueeze(dim=dim) * torch.ones_like(
+                        self.data, requires_grad=False
+                    )
                 if self.is_leaf:
                     if self.grad is not None:
                         self.grad = self.grad + self_grad
