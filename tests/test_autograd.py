@@ -2,11 +2,13 @@ import torch
 
 from tensor import Tensor
 
+x_list = [[1, 2], [3, 5]]
+y_list = [[1, 2], [3, 6]]
+w_list = [[6, 7], [8, 9]]
+dl_dz_list = [[1, 2], [3, 4]]
+
 
 def test_add_backwards_lhs():
-    x_list = [[1, 2], [3, 5]]
-    y_list = [[1, 2], [3, 5]]
-    dl_dz_list = [[1, 2], [3, 4]]
     x = Tensor(x_list, requires_grad=True)
     y = Tensor(y_list, requires_grad=False)
     z = x + y
@@ -25,9 +27,6 @@ def test_add_backwards_lhs():
 
 
 def test_add_backwards_rhs():
-    x_list = [[1, 2], [3, 5]]
-    y_list = [[1, 2], [3, 5]]
-    dl_dz_list = [[1, 2], [3, 4]]
     x = Tensor(x_list, requires_grad=False)
     y = Tensor(y_list, requires_grad=True)
     z = x + y
@@ -46,9 +45,6 @@ def test_add_backwards_rhs():
 
 
 def test_add_backwards_bhs():
-    x_list = [[1, 2], [3, 5]]
-    y_list = [[1, 2], [3, 5]]
-    dl_dz_list = [[1, 2], [3, 4]]
     x = Tensor(x_list, requires_grad=True)
     y = Tensor(y_list, requires_grad=True)
     z = x + y
@@ -64,3 +60,27 @@ def test_add_backwards_bhs():
     assert (x.grad == t_x.grad).all()
     assert (y.grad == t_y.grad).all()
     assert z.grad == t_z.grad
+
+
+def test_add_backwards_multinode():
+    x = Tensor(x_list, requires_grad=True)
+    y = Tensor(y_list, requires_grad=True)
+    w = Tensor(w_list, requires_grad=True)
+    z1 = x + y
+    z2 = z1 + w
+    dl_dz = Tensor(dl_dz_list)
+    z2.backward(dl_dz)
+
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_y = torch.tensor(y_list, requires_grad=True, dtype=torch.float32)
+    t_w = torch.tensor(w_list, requires_grad=True, dtype=torch.float32)
+    t_z1 = t_x + t_y
+    t_z2 = t_z1 + t_w
+    t_dl_dz = torch.tensor(dl_dz_list)
+    t_z2.backward(t_dl_dz)
+
+    assert (x.grad == t_x.grad).all()
+    assert (y.grad == t_y.grad).all()
+    assert (w.grad == t_w.grad).all()
+    assert z1.grad == t_z1.grad
+    assert z2.grad == t_z2.grad

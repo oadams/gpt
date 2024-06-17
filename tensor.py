@@ -37,8 +37,13 @@ class Tensor:
                 raise GradError(
                     "dL_dthis isn't of the right shape. It needs to match the shape of the tensor we're calling backward on."
                 )
-            # The reason dL_dthis is the gradient is because the gradient of result with respect to self is just a tensor of ones (it's addition) so overall the dL/d_self
-            # will just be dL/d_this element-wise times ones.
+            # TODO Explain in clearer terms below how we arrived at this
+            # gradient computation clearly. The clarity of the documentation and
+            # story here is as important as the implementation.  The reason
+            # dL_dthis is the gradient is because the gradient of result with
+            # respect to self is just a tensor of ones (it's addition) so
+            # overall the dL/d_self will just be dL/d_this element-wise times
+            # ones.
             if self.requires_grad:
                 if self.grad is not None:
                     self.grad = self.grad + dL_dthis.data
