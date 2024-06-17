@@ -24,20 +24,6 @@ class Tensor:
         data_str = repr(self.data).replace("tensor", "data")
         return data_str
 
-    # def sum(self):
-    #    # TODO Handle `dim` and `keepdim` arguments
-    #    result_data = self.data.sum()
-    #    result = Tensor(
-    #        result_data,
-    #        requires_grad=self.requires_grad,
-    #        is_leaf=False
-    #    )
-    #
-    #        def backward():
-    #
-    #
-    #        return result
-
     def __add__(self, other):
         result_data = self.data + other.data
         result = Tensor(
@@ -98,6 +84,39 @@ class Tensor:
                         other.grad = other_grad
                 else:
                     other.backward(other_grad)
+
+        result.backward = backward
+
+        return result
+
+    def sum(self):
+        # TODO Handle `dim` and `keepdim` arguments
+        result_data = self.data.sum()
+        result = Tensor(result_data, requires_grad=self.requires_grad, is_leaf=False)
+
+        def backward(dl_dr=None):
+            if dl_dr is None:
+                if len(result_data.shape) == 0:
+                    dl_dr = Tensor(1)
+                elif len(result_data.shape) == 1 and result_data.shape[0] == 1:
+                    dl_dr = Tensor([1])
+                else:
+                    raise GradError(
+                        "If tensor is not scalar then backwards must be called with a gradient of the same shape."
+                    )
+            if dl_dr.data.shape != result_data.shape:
+                raise GradError(
+                    "dL_dthis isn't of the right shape. It needs to match the shape of the tensor we're calling backward on."
+                )
+            if self.requires_grad:
+                self_grad = dl_dr.data
+                if self.is_leaf:
+                    if self.grad is not None:
+                        self.grad = self.grad + self_grad
+                    else:
+                        self.grad = self_grad
+                else:
+                    self.backward(self_grad)
 
         result.backward = backward
 

@@ -125,3 +125,16 @@ def test_add_backwards_noarg_nonscalar():
         assert False, "Expected RuntimeError"
     except GradError:
         pass
+
+
+def test_sum_backwards():
+    x = Tensor(x_list, requires_grad=True)
+    z = x.sum()
+    z.backward()  # no argument because z is a scalar
+
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_z = t_x.sum()
+    t_z.backward()  # no argument because t_z is a scalar
+
+    assert (x.grad == t_x.grad).all()
+    assert z.grad == t_z.grad
