@@ -189,3 +189,63 @@ def test_sum_dim1_keepdim_backwards():
 
     assert (x.grad == t_x.grad).all()
     assert z.grad == t_z.grad
+
+
+def test_matmul_backwards_lhs():
+    x = Tensor(x_list, requires_grad=True)
+    y = Tensor(y_list, requires_grad=False)
+    z = x @ y
+    dl_dz = Tensor(dl_dz_list)
+    z.backward(dl_dz)
+
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_y = torch.tensor(y_list, requires_grad=False, dtype=torch.float32)
+    t_z = t_x @ t_y
+    t_dl_dz = torch.tensor(dl_dz_list)
+    t_z.backward(t_dl_dz)
+
+    assert (x.grad == t_x.grad).all()
+    assert y.grad == t_y.grad
+    assert z.grad == t_z.grad
+
+
+def test_matmul_backwards_rhs():
+    x = Tensor(x_list, requires_grad=False)
+    y = Tensor(y_list, requires_grad=True)
+    z = x @ y
+    dl_dz = Tensor(dl_dz_list)
+    z.backward(dl_dz)
+
+    t_x = torch.tensor(x_list, requires_grad=False, dtype=torch.float32)
+    t_y = torch.tensor(y_list, requires_grad=True, dtype=torch.float32)
+    t_z = t_x @ t_y
+    t_dl_dz = torch.tensor(dl_dz_list)
+    t_z.backward(t_dl_dz)
+
+    assert x.grad == t_x.grad
+    assert (y.grad == t_y.grad).all()
+    assert z.grad == t_z.grad
+
+
+def test_matmul_backwards_multinode():
+    x = Tensor(x_list, requires_grad=True)
+    y = Tensor(y_list, requires_grad=True)
+    w = Tensor(w_list, requires_grad=True)
+    z1 = x @ y
+    z2 = z1 @ w
+    dl_dz = Tensor(dl_dz_list)
+    z2.backward(dl_dz)
+
+    t_x = torch.tensor(x_list, requires_grad=True, dtype=torch.float32)
+    t_y = torch.tensor(y_list, requires_grad=True, dtype=torch.float32)
+    t_w = torch.tensor(w_list, requires_grad=True, dtype=torch.float32)
+    t_z1 = t_x @ t_y
+    t_z2 = t_z1 @ t_w
+    t_dl_dz = torch.tensor(dl_dz_list)
+    t_z2.backward(t_dl_dz)
+
+    assert (x.grad == t_x.grad).all()
+    assert (y.grad == t_y.grad).all()
+    assert (w.grad == t_w.grad).all()
+    assert z1.grad == t_z1.grad
+    assert z2.grad == t_z2.grad
