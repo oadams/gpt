@@ -6,7 +6,8 @@ from torch import Tensor
 from jaxtyping import Float, Integer
 
 from activations import Softmax
-from config import Module, Parameter
+from containers import Module
+from tensor import gather, exp
 
 
 class NaiveCrossEntropyLoss(Module):
@@ -33,7 +34,7 @@ class NaiveCrossEntropyLoss(Module):
         # 1. Convert the logits to probabilities
         probs = self.softmax(input, dim=-1)
         # 2. Take only the inputs that correspond to the correct class
-        true_probs = torch.gather(probs, -1, target[:, None])
+        true_probs = gather(probs, -1, target[:, None])
         # 3. Negative sum of the log probabilites.
         neg_log_probs = -true_probs.log()
         if reduction == "mean":
@@ -59,9 +60,9 @@ class CrossEntropyLoss(Module):
         # Log softmax followed by negative log likelihood
         m = input.max(dim=-1, keepdim=True).values
         x = input - m
-        log_softmax = x - torch.exp(x).sum(dim=-1, keepdim=True).log()
+        log_softmax = x - exp(x).sum(dim=-1, keepdim=True).log()
 
-        nl = -torch.gather(log_softmax, -1, target[:, None])
+        nl = -gather(log_softmax, -1, target[:, None])
         if reduction == "mean":
             return nl.mean()
         elif reduction == "sum":

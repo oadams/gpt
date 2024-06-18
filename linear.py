@@ -1,11 +1,8 @@
 import math
 
-from jaxtyping import Integer
-import torch
-from torch import Tensor
-
 from initialization import uniform_, normal_
-from config import Module, Parameter
+from containers import Module, Parameter
+from tensor import empty
 
 
 class Linear(Module):
@@ -18,9 +15,9 @@ class Linear(Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.bias = bias
-        self.W = Parameter(torch.empty((output_dim, input_dim)))
+        self.W = Parameter(empty((output_dim, input_dim)))
         if self.bias:
-            self.b = Parameter(torch.empty((output_dim)))
+            self.b = Parameter(empty((output_dim)))
 
         if initialization == "kaiming_uniform":
             uniform_(
@@ -48,7 +45,7 @@ class Linear(Module):
         # Ein sum to rule them all
         # Ein sum to find them
         # Ein sum to bring them all and in the elegance bind them
-        result = torch.einsum("oi,bti->bto", self.W, x)
+        result = einsum("oi,bti->bto", self.W, x)
         if self.bias:
             result += self.b
         return result
@@ -59,7 +56,7 @@ class Embedding(Module):
         # factory_kwargs = {'device': device}
         super().__init__()
         # How to initialize the weights? Probably just use the kaiming initialization of linear? Nope, it's N(0, 1)
-        self.embs = Parameter(torch.empty((n_embed, hdim)))
+        self.embs = Parameter(empty((n_embed, hdim)))
         normal_(self.embs)
 
     def forward(self, indices):
@@ -67,7 +64,7 @@ class Embedding(Module):
 
 
 if __name__ == "__main__":
-    x = torch.randn((10, 10, 10))
+    x = randn((10, 10, 10))
     linear = Linear(10, 40)
     e = Embedding(10, 20)
     print(e.embs.is_leaf)

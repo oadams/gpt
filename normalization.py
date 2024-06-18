@@ -2,14 +2,15 @@ import torch
 from torch import Tensor
 from jaxtyping import Float
 
-from config import Module, Parameter
+from containers import Module, Parameter
+from tensor import sqrt, ones, zeros
 
 
 class LayerNorm(Module):
     def __init__(self, output_dim: int, eps=1e-5):
         super().__init__()
-        self.beta = Parameter(torch.zeros((output_dim), dtype=torch.float32))
-        self.gamma = Parameter(torch.ones((output_dim), dtype=torch.float32))
+        self.beta = Parameter(zeros((output_dim), dtype=torch.float32))
+        self.gamma = Parameter(ones((output_dim), dtype=torch.float32))
         self.eps = eps
 
     def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T C"]:
@@ -19,6 +20,6 @@ class LayerNorm(Module):
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, keepdim=True)
         # Normalize by mean and variance
-        x = (x - mean) / torch.sqrt(var + self.eps)
+        x = (x - mean) / sqrt(var + self.eps)
         # multiply by beta and add gamma
         return self.gamma * x + self.beta

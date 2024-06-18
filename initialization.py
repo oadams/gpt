@@ -12,9 +12,11 @@ from torch import Tensor
 from torch.distributions.normal import Normal
 from torch.distributions.uniform import Uniform
 
+from tensor import arange, Tensor, zeros
+
 
 def apply_dist_(t: Tensor, dist):
-    indices = itertools.product(*[torch.arange(dim) for dim in t.shape])
+    indices = itertools.product(*[arange(dim) for dim in t.shape])
     for index in indices:
         t.data[index] = dist.sample()
 
@@ -31,7 +33,7 @@ def normal_(t: Tensor, mean=0.0, std=1.0):
 
 
 if __name__ == "__main__":
-    x = torch.zeros((4, 5, 6))
+    x = zeros((4, 5, 6))
     print(x)
     normal_(x, mean=-4, std=0.01)
     print(x)

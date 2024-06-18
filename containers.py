@@ -1,8 +1,11 @@
 """Our own definitions of things like Module, Parameter, ModuleList, etc"""
 
 from abc import ABC, abstractmethod
+import tomllib
 
 import torch
+
+from tensor import Tensor
 
 
 class Module(ABC):
@@ -144,7 +147,7 @@ class ModuleList(Module):
         return self.module_list[i]
 
 
-class Parameter(torch.Tensor):
+class Parameter(Tensor):
     """Thin wrapper around tensors that basically just is used by `Module` to determine whether to register the tensor as a parameter"""
 
     def __init__(self, x):
@@ -155,3 +158,11 @@ class Parameter(torch.Tensor):
     def zero_grad(self):
         if self.grad is not None:
             self.grad.fill_(0)
+
+
+with open("config.toml", "rb") as f:
+    config = tomllib.load(f)
+if config["torch_module"]:
+    Module = torch.nn.Module
+    Parameter = torch.nn.Parameter
+    ModuleList = torch.nn.ModuleList

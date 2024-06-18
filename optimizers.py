@@ -8,6 +8,8 @@ we'll focus on just the readability here.
 
 import torch
 
+from tensor import zeros_like, sqrt
+
 
 class SGD(torch.optim.Optimizer):
     def __init__(self, params, lr, momentum_beta):
@@ -18,7 +20,7 @@ class SGD(torch.optim.Optimizer):
         # Initialize momentum for each parameter tensor
         for group in self.param_groups:
             for param in group["params"]:
-                self.state[param]["momentum"] = torch.zeros_like(param)
+                self.state[param]["momentum"] = zeros_like(param)
 
     def step(self):
         for group in self.param_groups:
@@ -43,7 +45,7 @@ class RMSProp(torch.optim.Optimizer):
         # Initialize s for each parameter tensor
         for group in self.param_groups:
             for param in group["params"]:
-                self.state[param]["s"] = torch.zeros_like(param)
+                self.state[param]["s"] = zeros_like(param)
 
     def step(self):
         for group in self.param_groups:
@@ -55,7 +57,7 @@ class RMSProp(torch.optim.Optimizer):
                     continue
                 s = self.state[param]["s"]
                 s = beta * s + (1 - beta) * (param.grad**2)
-                param.data -= lr * param.grad / (torch.sqrt(s) + eps)
+                param.data -= lr * param.grad / (sqrt(s) + eps)
                 self.state[param]["s"] = s
 
 
@@ -66,8 +68,8 @@ class Adam(torch.optim.Optimizer):
         # Initialize v and s for each parameter tensor
         for group in self.param_groups:
             for param in group["params"]:
-                self.state[param]["v"] = torch.zeros_like(param)
-                self.state[param]["s"] = torch.zeros_like(param)
+                self.state[param]["v"] = zeros_like(param)
+                self.state[param]["s"] = zeros_like(param)
         self.step_t = 1
 
     def step(self):
@@ -87,7 +89,7 @@ class Adam(torch.optim.Optimizer):
                 self.state[param]["v"] = s
                 v = v / (1 - beta1**self.step_t)
                 s = s / (1 - beta2**self.step_t)
-                param.data -= lr * v / (torch.sqrt(s) + eps)
+                param.data -= lr * v / (sqrt(s) + eps)
         self.step_t += 1
 
 
@@ -104,8 +106,8 @@ class AdamW(torch.optim.Optimizer):
         # Initialize v and s for each parameter tensor
         for group in self.param_groups:
             for param in group["params"]:
-                self.state[param]["v"] = torch.zeros_like(param)
-                self.state[param]["s"] = torch.zeros_like(param)
+                self.state[param]["v"] = zeros_like(param)
+                self.state[param]["s"] = zeros_like(param)
         self.step_t = 1
 
     def step(self):
@@ -127,5 +129,5 @@ class AdamW(torch.optim.Optimizer):
                 self.state[param]["v"] = v
                 v = v / (1 - beta1**self.step_t)
                 s = s / (1 - beta2**self.step_t)
-                param.data -= lr * v / (torch.sqrt(s) + eps)
+                param.data -= lr * v / (sqrt(s) + eps)
         self.step_t += 1

@@ -1,5 +1,7 @@
 """Tensor operations and autograd"""
 
+import tomllib
+
 import torch
 
 
@@ -61,9 +63,19 @@ class Tensor:
     """
 
     def __init__(
-        self, data, dtype=torch.float32, device="cpu", requires_grad=False, is_leaf=True
+        self, data=[], dtype=None, device="cpu", requires_grad=False, is_leaf=True
     ):
-        self.data = torch.tensor(data, dtype=dtype, device=device, requires_grad=False)
+        if isinstance(data, torch.Tensor):
+            self.data = data.clone().detach()
+        else:
+            if dtype is not None:
+                self.data = torch.tensor(
+                    data, dtype=torch.float32, device=device, requires_grad=False
+                )
+            else:
+                self.data = torch.tensor(
+                    data, dtype=dtype, device=device, requires_grad=False
+                )
         self.is_leaf = is_leaf
         self.requires_grad = requires_grad
         self.grad = None
@@ -152,3 +164,89 @@ class Tensor:
         result.backward = backward
 
         return result
+
+
+def torchify(arg):
+    if isinstance(arg, tuple):
+        return tuple(torchify(a) for a in arg)
+    elif isinstance(arg, Tensor):
+        return arg.data
+    else:
+        return arg
+
+
+def create_wrapper(torch_func):
+    """Recall that our Tensor class is just a wrapper around torch.Tensor that
+    uses it's own autograd and backwards() functions but defers to the torch
+    implementation for the 'forward' operations. The idea here in
+    `create_wrapper` is to create our own versions of torch functions that just
+    rely on applying the torch function to the underlying data housed in our
+    Tensor."""
+
+    def f(*args, **kwargs):
+        args = [torchify(arg) for arg in args]
+        if "requires_grad" in kwargs:
+            requires_grad = kwargs["requires_grad"]
+            kwargs["requires_grad"] = False
+        else:
+            requires_grad = False
+        data = torch_func(*args, **kwargs)
+        dtype = data.dtype
+        device = data.device
+        return Tensor(data, dtype=dtype, device=device, requires_grad=requires_grad)
+
+    return f
+
+
+with open("config.toml", "rb") as f:
+    config = tomllib.load(f)
+
+if config["torch_autograd"]:
+    tensor = torch.tensor
+    randint = torch.randint
+    zeros = torch.zeros
+    tril = torch.tril
+    ones = torch.ones
+    cat = torch.cat
+    arange = torch.arange
+    argmax = torch.argmax
+    topk = torch.topk
+    multinomial = torch.multinomial
+    zeros_like = torch.zeros_like
+    sqrt = torch.sqrt
+    erf = torch.erf
+    exp = torch.exp
+    Tensor = torch.Tensor
+    empty = torch.empty
+    einsum = torch.einsum
+    randn = torch.randn
+    gather = torch.gather
+    ones_like = torch.ones_like
+    bernoulli = torch.bernoulli
+else:
+    randint = create_wrapper(torch.randint)
+    zeros = create_wrapper(torch.randint)
+    tril = create_wrapper(torch.tril)
+    ones = create_wrapper(torch.ones)
+    cat = create_wrapper(torch.cat)
+    arange = create_wrapper(torch.arange)
+    argmax = create_wrapper(torch.argmax)
+    topk = create_wrapper(torch.topk)
+    multinomial = create_wrapper(torch.multinomial)
+    zeros_like = create_wrapper(torch.zeros_like)
+    sqrt = create_wrapper(torch.sqrt)
+    erf = create_wrapper(torch.erf)
+    exp = create_wrapper(torch.exp)
+    empty = create_wrapper(torch.empty)
+    einsum = create_wrapper(torch.einsum)
+    randn = create_wrapper(torch.randn)
+    gather = create_wrapper(torch.gather)
+    ones_like = create_wrapper(torch.ones_like)
+    bernoulli = create_wrapper(torch.bernoulli)
+    tensor = Tensor
+
+if __name__ == "__main__":
+    x = randint(2, (4,))
+    y = randint(2, (4,))
+    z = cat((x, y))
+    x = 1

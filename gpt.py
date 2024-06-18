@@ -29,7 +29,19 @@ from regularization import Dropout
 from loss import CrossEntropyLoss
 from linear import Linear, Embedding
 
-from config import Module, Parameter, ModuleList
+from containers import Module, ModuleList
+from tensor import (
+    tensor,
+    randint,
+    zeros,
+    tril,
+    ones,
+    cat,
+    arange,
+    argmax,
+    topk,
+    multinomial,
+)
 
 
 def get_device():
@@ -162,16 +174,16 @@ def create_batch(
         text_ids = test
     else:
         raise ValueError('Split must be either "train" or "test"')
-    rand_starts: Float[Tensor, "B"] = torch.randint(
+    rand_starts: Float[Tensor, "B"] = randint(
         len(text_ids) - context_length, (batch_size,)
     )
-    x = torch.tensor(
+    x = tensor(
         [
             text_ids[rand_start : rand_start + context_length]
             for rand_start in rand_starts.tolist()
         ]
     ).to(args.device)
-    y = torch.tensor(
+    y = tensor(
         [
             text_ids[rand_start + 1 : rand_start + context_length + 1]
             for rand_start in rand_starts.tolist()
@@ -192,7 +204,7 @@ def estimate_loss(
     model.eval()
     result = {}
     for split in ["train", "test"]:
-        losses = torch.zeros(eval_iters)
+        losses = zeros(eval_iters)
         for iter in range(eval_iters):
             x, y = create_batch(batch_size, context_length, split)
             _, loss = model(x, y)
@@ -220,9 +232,7 @@ class Attention(Module):
         # register_buffer just stores this tensor in the model not as a parameter, so the optimizer
         # won't do anything with them.
         # tril is a triangular lower matrix and it's what we use to mask out the future tokens.
-        self.register_buffer(
-            "tril", torch.tril(torch.ones(context_length, context_length))
-        )
+        self.register_buffer("tril", tril(ones(context_length, context_length)))
         self.softmax = Softmax()
 
     @jaxtyped(typechecker=typechecker)
@@ -271,7 +281,7 @@ class MultiHeadAttention(Module):
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T H"]:
         head_outs = [head(x) for head in self.heads]
-        return self.proj(torch.cat(head_outs, dim=-1))
+        return self.proj(cat(head_outs, dim=-1))
 
 
 class TransformerLayer(Module):
@@ -346,9 +356,7 @@ class GPT(Module):
         self, x: Integer[Tensor, "B T"], y: Optional[Integer[Tensor, "B T"]] = None
     ) -> Tuple[Float[Tensor, "B T C"], Optional[Float[Tensor, ""]]]:
         T = x.shape[-1]
-        x = self.embedding(x) + self.pos_embedding(
-            torch.arange((T), device=args.device)
-        )
+        x = self.embedding(x) + self.pos_embedding(arange((T), device=args.device))
         for layer in self.layers:
             x = layer(x)
         x = self.layernorm(x)
@@ -372,7 +380,7 @@ class GPT(Module):
         context_length: int,
         payg=False,
         greedy=False,
-        topk=None,
+        k=None,
     ) -> Integer[Tensor, "B max_output_length"]:
         T = context.shape[-1]
         for _ in range(max_output_length - T):
@@ -384,21 +392,21 @@ class GPT(Module):
             probs = self.softmax(logits, dim=-1)
             if greedy:
                 # Take the most likely token at each time step.
-                idx = torch.argmax(probs, dim=1)[:, None]
+                idx = argmax(probs, dim=1)[:, None]
             elif topk:
                 # Take the top k tokens at each time step. We're basically just saying we never want to sample low probability tokens.
-                top = torch.topk(probs, topk)
+                top = topk(probs, k)
                 # Renormalize probabilities and sample from them
-                idx = torch.multinomial(
+                idx = multinomial(
                     top.values / top.values.sum(-1, keepdim=True), num_samples=1
                 )
                 # Convert indexes in top-k space into indexes in the full token vocab space.
                 idx = top.indices.gather(dim=-1, index=idx)
             else:
                 # Just do plain sampling from all possible tokens.
-                idx = torch.multinomial(probs, 1)
+                idx = multinomial(probs, 1)
             # Then feed those words as context in. Once you get to length `context_size` start doing a sliding window.
-            context = torch.cat((context, idx), dim=1)
+            context = cat((context, idx), dim=1)
             if payg:
                 B = context.shape[0]
                 if B > 1:
@@ -457,7 +465,7 @@ if not args.generate_only:
     print(
         estimate_loss(gpt, args.n_estimate_steps, args.batch_size, args.context_length)
     )
-context = torch.tensor([enc.encode(args.prompt)]).to(args.device)
+context = tensor([enc.encode(args.prompt)]).to(args.device)
 gpt.generate(
     context,
     args.n_gen_tokens,
