@@ -81,8 +81,22 @@ class Tensor:
         self.grad = None
         self.backward = None
 
+    @property
     def shape(self):
         return self.data.shape
+
+    def __iter__(self):
+        for item in self.data:
+            yield Tensor(item)
+
+    def __getitem__(self, index):
+        return Tensor(self.data[index])
+
+    def __setitem__(self, index, value):
+        if isinstance(value, Tensor):
+            self.data[index] = value.data
+        else:
+            self.data[index] = value
 
     def __repr__(self):
         data_str = repr(self.data).replace("tensor", "data")
