@@ -2,7 +2,8 @@ import torch
 from torch import Tensor
 from jaxtyping import Float
 
-from config import Module, Parameter
+from containers import Module, Parameter
+from config import config
 
 
 class LayerNorm(Module):
@@ -22,3 +23,7 @@ class LayerNorm(Module):
         x = (x - mean) / torch.sqrt(var + self.eps)
         # multiply by beta and add gamma
         return self.gamma * x + self.beta
+
+
+if config["torch_activation"]:
+    LayerNorm = torch.nn.LayerNorm

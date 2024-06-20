@@ -5,7 +5,9 @@ import torch
 from torch import Tensor
 
 from initialization import uniform_, normal_
-from config import Module, Parameter
+from containers import Module, Parameter
+
+from config import config
 
 
 class Linear(Module):
@@ -74,3 +76,7 @@ if __name__ == "__main__":
     e.to("mps")
     print(e.embs.is_leaf)
     x = 1
+
+if config["torch_linear"]:
+    Linear = torch.nn.Linear
+    Embedding = torch.nn.Embedding

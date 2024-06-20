@@ -3,7 +3,8 @@
 import math
 import torch
 
-from config import Module
+from containers import Module
+from config import config
 
 
 class GeLU(Module):
@@ -18,10 +19,14 @@ class UnstableSoftmax(Module):
 
 
 class Softmax(Module):
-    def forward(self, x, dim):
-        m = x.max(dim=dim, keepdim=True).values
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        m = x.max(dim=self.dim, keepdim=True).values
         x = torch.exp(x - m)
-        return x / x.sum(dim=dim, keepdim=True)
+        return x / x.sum(dim=self.dim, keepdim=True)
 
 
 if __name__ == "__main__":
@@ -32,3 +37,7 @@ if __name__ == "__main__":
     usm = UnstableSoftmax()(x, dim=-1)
     ssm = Softmax()(x, dim=-1)
     y = 1
+
+if config["torch_activation"]:
+    Softmax = torch.nn.Softmax
+    GeLU = torch.nn.GELU

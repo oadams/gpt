@@ -42,6 +42,7 @@ There are plenty of things to do, just off the top of my head:
   Grouped Query Attention, Key-Value caching, quantization, data loaders,
   distributed training, and so on
   essentially ad infinitum.
+- [ ] Add perpexity calculations
 
 And as far as code quality goes, just some starting notes:
 - [ ] More clearly document the code

@@ -22,14 +22,13 @@ import torch.random
 from torch.utils.tensorboard.writer import SummaryWriter
 import tqdm
 
+from containers import Module, Parameter, ModuleList
 from optimizers import AdamW
 from normalization import LayerNorm
 from activations import GeLU, Softmax
 from regularization import Dropout
 from loss import CrossEntropyLoss
 from linear import Linear, Embedding
-
-from config import Module, Parameter, ModuleList
 
 
 def get_device():
@@ -223,7 +222,7 @@ class Attention(Module):
         self.register_buffer(
             "tril", torch.tril(torch.ones(context_length, context_length))
         )
-        self.softmax = Softmax()
+        self.softmax = Softmax(dim=-1)
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T H"]:
@@ -237,7 +236,7 @@ class Attention(Module):
         # The magic to mask out future tokens. We set the future tokens to -inf so that when we
         # do a softmax they get a probability of 0.
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
-        wei = self.softmax(wei, dim=-1)
+        wei = self.softmax(wei)
         wei = self.dropout(wei)
         return wei @ V
 
@@ -339,7 +338,7 @@ class GPT(Module):
             ]
         )
         self.layernorm = LayerNorm(hdim)
-        self.softmax = Softmax()
+        self.softmax = Softmax(dim=-1)
 
     @jaxtyped(typechecker=typechecker)
     def forward(
@@ -381,7 +380,7 @@ class GPT(Module):
             # Grab the final token. This is where we'll get the probabilities for the next token from.
             logits = logits[:, -1, :]
             # Now find the token closest to this logit.
-            probs = self.softmax(logits, dim=-1)
+            probs = self.softmax(logits)
             if greedy:
                 # Take the most likely token at each time step.
                 idx = torch.argmax(probs, dim=1)[:, None]

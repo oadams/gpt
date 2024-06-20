@@ -2,7 +2,9 @@
 
 import torch
 
-from config import Module
+from containers import Module
+
+from config import config
 
 
 class Dropout(Module):
@@ -22,3 +24,7 @@ class Dropout(Module):
             return x * mask / (1 - self.p)
         else:
             return x
+
+
+if config["torch_dropout"]:
+    Dropout = torch.nn.Dropout

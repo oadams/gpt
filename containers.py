@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 
 import torch
 
+from config import config
+
 
 class Module(ABC):
     """User must implement a forward method"""
@@ -155,3 +157,11 @@ class Parameter(torch.Tensor):
     def zero_grad(self):
         if self.grad is not None:
             self.grad.fill_(0)
+
+
+if config["torch_module"]:
+    Module = torch.nn.Module
+    Parameter = torch.nn.Parameter
+    ModuleList = torch.nn.ModuleList
+else:
+    from containers import Module, Parameter, ModuleList

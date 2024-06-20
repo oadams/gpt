@@ -1,1 +1,7 @@
-torch_module = false
+torch_module = true
+torch_linear = true
+torch_loss = true
+torch_dropout = true
+torch_activation = true
+torch_normalization = true
+torch_optim = true

@@ -8,6 +8,8 @@ we'll focus on just the readability here.
 
 import torch
 
+from config import config
+
 
 class SGD(torch.optim.Optimizer):
     def __init__(self, params, lr, momentum_beta):
@@ -129,3 +131,10 @@ class AdamW(torch.optim.Optimizer):
                 s = s / (1 - beta2**self.step_t)
                 param.data -= lr * v / (torch.sqrt(s) + eps)
         self.step_t += 1
+
+
+if config["torch_optim"]:
+    Adam = torch.optim.Adam
+    AdamW = torch.optim.AdamW
+    SGD = torch.optim.SGD
+    RMSProp = torch.optim.RMSprop

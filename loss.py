@@ -6,7 +6,8 @@ from torch import Tensor
 from jaxtyping import Float, Integer
 
 from activations import Softmax
-from config import Module, Parameter
+from containers import Module, Parameter
+from config import config
 
 
 class NaiveCrossEntropyLoss(Module):
@@ -80,3 +81,6 @@ if __name__ == "__main__":
     gt_loss = ref_loss(input, target)
     print(loss)
     print(gt_loss)
+
+if config["torch_loss"]:
+    CrossEntropyLoss = torch.nn.CrossEntropyLoss
