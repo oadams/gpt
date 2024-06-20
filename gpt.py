@@ -24,7 +24,7 @@ import tqdm
 
 from containers import Module, Parameter, ModuleList
 from optimizers import AdamW
-from normalization import LayerNorm
+from normalization import RMSNorm
 from activations import GeLU, Softmax
 from regularization import Dropout
 from loss import CrossEntropyLoss
@@ -301,8 +301,8 @@ class TransformerLayer(Module):
         # In the original paper they said d_model is 512 and d_ff is 2048. This is why we use a 4x ratio here.
         self.ff = Linear(output_dim, 4 * output_dim)
         self.proj = Linear(4 * output_dim, output_dim)
-        self.layernorm1 = LayerNorm(output_dim)
-        self.layernorm2 = LayerNorm(output_dim)
+        self.norm1 = RMSNorm(output_dim)
+        self.norm2 = RMSNorm(output_dim)
         self.mh_dropout = Dropout(dropout)
         self.ff_dropout = Dropout(dropout)
         self.gelu = GeLU()
@@ -310,8 +310,8 @@ class TransformerLayer(Module):
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T H"]:
         # x = x + y is a residiual connection.
-        x = x + self.mh_dropout(self.mh_attention(self.layernorm1(x)))
-        x = x + self.ff_dropout(self.proj(self.gelu(self.ff(self.layernorm2(x)))))
+        x = x + self.mh_dropout(self.mh_attention(self.norm1(x)))
+        x = x + self.ff_dropout(self.proj(self.gelu(self.ff(self.norm2(x)))))
         return x
 
 
@@ -337,7 +337,7 @@ class GPT(Module):
                 for _ in range(num_layers)
             ]
         )
-        self.layernorm = LayerNorm(hdim)
+        self.norm = RMSNorm(hdim)
         self.softmax = Softmax(dim=-1)
 
     @jaxtyped(typechecker=typechecker)
@@ -350,7 +350,7 @@ class GPT(Module):
         )
         for layer in self.layers:
             x = layer(x)
-        x = self.layernorm(x)
+        x = self.norm(x)
         logits = self.final_proj(x)
 
         if y is None:

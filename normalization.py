@@ -25,5 +25,16 @@ class LayerNorm(Module):
         return self.gamma * x + self.beta
 
 
+class RMSNorm(Module):
+    def __init__(self, output_dim: int, eps=1e-5):
+        super().__init__()
+        self.gamma = Parameter(torch.ones((output_dim), dtype=torch.float32))
+        self.eps = eps
+
+    def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T C"]:
+        x = x / torch.sqrt((x**2).mean(dim=-1, keepdim=True) + self.eps)
+        return x * self.gamma
+
+
 if config["torch_activation"]:
     LayerNorm = torch.nn.LayerNorm
