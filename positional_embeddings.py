@@ -30,7 +30,16 @@ class RoPE2D(torch.nn.Module):
         return result
 
 
-class RoPE(torch.nn.Module):
+class RotaryEmbedding(torch.nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        # TODO Use this info and optimize the forward pass
+        self.dim = dim
+
+    # This is basically just to be consistent with the lucid rains interface.
+    def rotate_queries_or_keys(self, x):
+        return self.forward(x)
+
     def forward(self, x):
         b, t, d = x.shape
         assert d % 2 == 0
@@ -53,12 +62,12 @@ class RoPE(torch.nn.Module):
 
 if __name__ == "__main__":
     x = torch.ones((2, 11, 6))
-    from rotary_embedding_torch import RotaryEmbedding
+    from rotary_embedding_torch import RotaryEmbedding as RefRotaryEmbedding
 
-    ref = RotaryEmbedding(dim=x.shape[-1])
-    rope = RoPE()
-    e = rope(x)
-    e_ref = ref.rotate_queries_or_keys(x.unsqueeze(0))
+    ref = RefRotaryEmbedding(dim=x.shape[-1])
+    rope = RotaryEmbedding(dim=x.shape[-1])
+    e = rope.rotate_queries_or_keys(x)
+    e_ref = ref.rotate_queries_or_keys(x)
     print(e)
     print(e_ref)
 
