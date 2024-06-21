@@ -60,16 +60,5 @@ class RotaryEmbedding(torch.nn.Module):
         return result
 
 
-if __name__ == "__main__":
-    x = torch.ones((2, 11, 6))
-    from rotary_embedding_torch import RotaryEmbedding as RefRotaryEmbedding
-
-    ref = RefRotaryEmbedding(dim=x.shape[-1])
-    rope = RotaryEmbedding(dim=x.shape[-1])
-    e = rope.rotate_queries_or_keys(x)
-    e_ref = ref.rotate_queries_or_keys(x)
-    print(e)
-    print(e_ref)
-
 if config["lucidrains_rope"]:
     from rotary_embedding_torch import RotaryEmbedding
