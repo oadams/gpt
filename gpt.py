@@ -29,7 +29,7 @@ from activations import GeLU, Softmax
 from regularization import Dropout
 from loss import CrossEntropyLoss
 from linear import Linear, Embedding
-from positional_embeddings import RoPE
+from positional_embeddings import RotaryEmbedding
 
 
 def get_device():
@@ -224,12 +224,12 @@ class Attention(Module):
             "tril", torch.tril(torch.ones(context_length, context_length))
         )
         self.softmax = Softmax(dim=-1)
-        self.rope = RoPE()
+        self.rope = RotaryEmbedding(dim=self.output_dim)
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T H"]:
-        K: Float[Tensor, "B T H"] = self.rope(self.Wk(x))
-        Q: Float[Tensor, "B T H"] = self.rope(self.Wq(x))
+        K: Float[Tensor, "B T H"] = self.rope.rotate_queries_or_keys(self.Wk(x))
+        Q: Float[Tensor, "B T H"] = self.rope.rotate_queries_or_keys(self.Wq(x))
         V: Float[Tensor, "B T H"] = self.Wv(x)
         # For large dimensions H, the Q-K dot products can get very large, which means when we go
         # to compute the softmax we get small gradients. Dividing by sqrt(H) helps mitigate this.

@@ -1,6 +1,8 @@
 import math
 import torch
 
+from config import config
+
 
 class RoPE2D(torch.nn.Module):
     def __init__(self):
@@ -59,3 +61,6 @@ if __name__ == "__main__":
     e_ref = ref.rotate_queries_or_keys(x.unsqueeze(0))
     print(e)
     print(e_ref)
+
+if config["lucidrains_rope"]:
+    from rotary_embedding_torch import RotaryEmbedding

@@ -5,3 +5,4 @@ torch_dropout = true
 torch_activation = true
 torch_normalization = true
 torch_optim = true
+lucidrains_rope = true
