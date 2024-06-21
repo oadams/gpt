@@ -29,6 +29,7 @@ from activations import GeLU, Softmax
 from regularization import Dropout
 from loss import CrossEntropyLoss
 from linear import Linear, Embedding
+from positional_embeddings import RoPE
 
 
 def get_device():
@@ -223,11 +224,12 @@ class Attention(Module):
             "tril", torch.tril(torch.ones(context_length, context_length))
         )
         self.softmax = Softmax(dim=-1)
+        self.rope = RoPE()
 
     @jaxtyped(typechecker=typechecker)
     def forward(self, x: Float[Tensor, "B T C"]) -> Float[Tensor, "B T H"]:
-        K: Float[Tensor, "B T H"] = self.Wk(x)
-        Q: Float[Tensor, "B T H"] = self.Wq(x)
+        K: Float[Tensor, "B T H"] = self.rope(self.Wk(x))
+        Q: Float[Tensor, "B T H"] = self.rope(self.Wq(x))
         V: Float[Tensor, "B T H"] = self.Wv(x)
         # For large dimensions H, the Q-K dot products can get very large, which means when we go
         # to compute the softmax we get small gradients. Dividing by sqrt(H) helps mitigate this.
@@ -345,9 +347,7 @@ class GPT(Module):
         self, x: Integer[Tensor, "B T"], y: Optional[Integer[Tensor, "B T"]] = None
     ) -> Tuple[Float[Tensor, "B T C"], Optional[Float[Tensor, ""]]]:
         T = x.shape[-1]
-        x = self.embedding(x) + self.pos_embedding(
-            torch.arange((T), device=args.device)
-        )
+        x = self.embedding(x)
         for layer in self.layers:
             x = layer(x)
         x = self.norm(x)
